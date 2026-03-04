@@ -1,0 +1,74 @@
+{% extends 'base.html' %}
+
+{% block title %}Mensajes{% endblock %}
+
+{% block content %}
+<div class="container">
+    <div class="page-header">
+        <h1>💬 Mensajes</h1>
+        <p class="subtitle">Comunicación directa entre docente y estudiante</p>
+    </div>
+
+    <div class="messages-layout">
+        <section class="section">
+            <h2>Enviar mensaje</h2>
+            <form method="POST" class="form-modern">
+                <div class="form-group">
+                    <label for="recipient_id">Destinatario</label>
+                    <select id="recipient_id" name="recipient_id" required>
+                        <option value="">Selecciona destinatario...</option>
+                        {% for recipient in recipients %}
+                            <option value="{{ recipient.id }}">{{ recipient.nombre or recipient.username }} ({{ 'Docente' if recipient.role == 'teacher' else 'Estudiante' }})</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="content">Mensaje</label>
+                    <textarea id="content" name="content" rows="5" required placeholder="Escribe tu mensaje..."></textarea>
+                </div>
+                <button type="submit" class="btn btn-primary">Enviar mensaje</button>
+            </form>
+        </section>
+
+        <section class="section">
+            <h2>Recibidos</h2>
+            <div class="message-list">
+                {% if received_messages %}
+                    {% for message in received_messages %}
+                        {% set sender = users_map.get(message.sender_id) %}
+                        <article class="message-item incoming">
+                            <div class="message-meta">
+                                <strong>{{ sender.nombre if sender and sender.nombre else (sender.username if sender else 'Usuario') }}</strong>
+                                <span>{{ message.created_at.strftime('%d/%m/%Y %H:%M') }}</span>
+                            </div>
+                            <p>{{ message.content }}</p>
+                        </article>
+                    {% endfor %}
+                {% else %}
+                    <p class="empty-state">No tienes mensajes recibidos.</p>
+                {% endif %}
+            </div>
+        </section>
+
+        <section class="section">
+            <h2>Enviados</h2>
+            <div class="message-list">
+                {% if sent_messages %}
+                    {% for message in sent_messages %}
+                        {% set recipient = users_map.get(message.recipient_id) %}
+                        <article class="message-item outgoing">
+                            <div class="message-meta">
+                                <strong>Para: {{ recipient.nombre if recipient and recipient.nombre else (recipient.username if recipient else 'Usuario') }}</strong>
+                                <span>{{ message.created_at.strftime('%d/%m/%Y %H:%M') }}</span>
+                            </div>
+                            <p>{{ message.content }}</p>
+                        </article>
+                    {% endfor %}
+                {% else %}
+                    <p class="empty-state">No has enviado mensajes aún.</p>
+                {% endif %}
+            </div>
+        </section>
+    </div>
+</div>
+{% endblock %}

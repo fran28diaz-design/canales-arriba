@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+
+{% block title %}Editar Word - English Academy{% endblock %}
+
+{% block content %}
+<div class="container">
+    <div class="form-container">
+        <div class="form-header">
+            <h1>✍️ Editar Documento Word</h1>
+            <p class="subtitle">Edición ejecutiva del contenido del archivo {{ material.titulo }}</p>
+        </div>
+
+        <form method="POST" class="form form-large">
+            <div class="form-group">
+                <label for="word_content">Contenido del documento</label>
+                <textarea id="word_content" name="word_content" rows="18" placeholder="Escribe aquí el contenido...">{{ material.word_content or '' }}</textarea>
+            </div>
+            <div class="form-actions">
+                <button type="submit" class="btn btn-primary">Guardar cambios</button>
+                <a href="{{ url_for('dashboard_teacher') }}" class="btn btn-secondary">Cancelar</a>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}

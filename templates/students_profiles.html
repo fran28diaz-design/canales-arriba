@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+
+{% block title %}Perfiles de Estudiantes - English Academy{% endblock %}
+
+{% block content %}
+<div class="container">
+    <div class="dashboard">
+        <div class="section">
+            <h2>👥 Perfiles de Estudiantes</h2>
+            {% if students %}
+                <div class="table-wrapper">
+                    <table class="table">
+                        <thead>
+                            <tr>
+                                <th>Nombre</th>
+                                <th>Usuario</th>
+                                <th>Email</th>
+                                <th>Fecha de registro</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for student in students %}
+                            <tr>
+                                <td>{{ student.nombre }}</td>
+                                <td>@{{ student.username }}</td>
+                                <td>{{ student.email }}</td>
+                                <td>{{ student.fecha_creacion.strftime('%d/%m/%Y') if student.fecha_creacion else '-' }}</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            {% else %}
+                <p class="empty-state">No hay estudiantes registrados todavía.</p>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}

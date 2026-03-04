@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+
+{% block title %}Biblia - Holy Bible{% endblock %}
+
+{% block content %}
+<div class="container">
+    <div class="card">
+        <h1>Holy Bible</h1>
+        <p class="subtitle">Usa Holy Bible directamente aquí, dentro de la plataforma.</p>
+        <div style="margin-top: 20px; border-radius: 12px; overflow: hidden; border: 1px solid rgba(255,255,255,0.1);">
+            <iframe
+                src="https://www.bible.com/es"
+                title="Holy Bible App"
+                style="width: 100%; height: 75vh; min-height: 600px; border: 0; background: #fff;"
+                loading="lazy"
+                referrerpolicy="strict-origin-when-cross-origin">
+            </iframe>
+        </div>
+    </div>
+</div>
+{% endblock %}

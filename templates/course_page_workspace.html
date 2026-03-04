@@ -1,0 +1,1189 @@
+{% extends "base.html" %}
+
+{% block title %}{{ page.title }} - {{ t('nav_courses') }}{% endblock %}
+
+{% block content %}
+<div
+    class="container course-space {% if is_teacher %}workspace-teacher-mode{% endif %}"
+    id="courseWorkspaceConfig"
+    data-is-teacher="{{ '1' if is_teacher else '0' }}"
+    data-save-teacher-url="{{ url_for('course_page_save_teacher', page_id=page.id) }}"
+    data-publish-page-url="{{ url_for('course_page_publish', page_id=page.id) }}"
+    data-unpublish-page-url="{{ url_for('course_page_unpublish', page_id=page.id) }}"
+    data-page-published="{{ '1' if page.is_published else '0' }}"
+    data-save-notes-url="{{ url_for('course_save_notes', page_id=page.id) }}"
+    data-upload-image-url="{{ url_for('course_page_upload_image', page_id=page.id) }}"
+>
+    <div class="card">
+        <div class="course-header-row">
+            <div>
+                <h1>{{ page.title }}</h1>
+                <p>Curso: {{ course.title }}</p>
+            </div>
+            <div class="course-header-actions">
+                <a class="btn btn-secondary" href="{{ url_for('course_detail', course_id=course.id) }}">Volver al curso</a>
+                {% if is_teacher %}
+                <form method="POST" action="{{ url_for('course_page_delete', page_id=page.id) }}" onsubmit="return confirm('¿Eliminar esta hoja? Se borrará el contenido y preguntas asociadas.');">
+                    <button type="submit" class="btn btn-danger">Eliminar hoja</button>
+                </form>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <div class="course-grid workspace-grid">
+        <div class="card">
+            {% if is_teacher %}
+                <div class="workspace-topbar">
+                    <div>
+                        <h2 class="workspace-title">Hoja en blanco del docente</h2>
+                        <p class="workspace-subtitle">Empieza sin contenido y construye tu clase libremente con texto, imágenes y calendario.</p>
+                        <p class="workspace-subtitle">Estado: <strong id="pagePublishState">{{ 'Publicada' if page.is_published else 'Borrador' }}</strong></p>
+                    </div>
+                    <div class="course-item-actions">
+                        <button class="btn btn-primary" onclick="saveTeacherContent()">Guardar contenido</button>
+                        {% if not page.is_published %}
+                        <button class="btn btn-secondary" id="publishPageBtn" onclick="publishTeacherPage()">Publicar hoja</button>
+                        {% else %}
+                        <button class="btn btn-secondary" id="unpublishPageBtn" onclick="unpublishTeacherPage()">Despublicar hoja</button>
+                        {% endif %}
+                    </div>
+                </div>
+
+                <div class="workspace-hints">
+                    <span>Click dentro de la hoja para escribir</span>
+                    <span>Botón + para insertar bloques</span>
+                    <span>Arrastra imágenes al área</span>
+                </div>
+
+                <div class="text-format-bar" id="textFormatBar">
+                    <select id="fontFamilySelect" aria-label="Fuente">
+                        <option value="">Fuente</option>
+                        <option value="'Segoe UI', Tahoma, Geneva, Verdana, sans-serif">Segoe UI</option>
+                        <option value="Arial, Helvetica, sans-serif">Arial</option>
+                        <option value="'Times New Roman', Times, serif">Times New Roman</option>
+                        <option value="Georgia, serif">Georgia</option>
+                        <option value="'Courier New', Courier, monospace">Courier New</option>
+                    </select>
+                    <select id="fontSizeSelect" aria-label="Tamaño">
+                        <option value="">Tamaño</option>
+                        <option value="14px">14</option>
+                        <option value="16px">16</option>
+                        <option value="18px">18</option>
+                        <option value="20px">20</option>
+                        <option value="24px">24</option>
+                        <option value="28px">28</option>
+                        <option value="32px">32</option>
+                    </select>
+                    <button type="button" id="boldTextBtn">Negrita</button>
+                    <button type="button" id="italicTextBtn">Cursiva</button>
+                    <button type="button" id="underlineTextBtn">Subrayado</button>
+                    <label class="format-color-label" for="textColorInput">Texto</label>
+                    <input type="color" id="textColorInput" value="#111827" aria-label="Color de texto">
+                    <label class="format-color-label" for="highlightColorInput">Fondo</label>
+                    <input type="color" id="highlightColorInput" value="#fff59d" aria-label="Color de fondo">
+                    <button type="button" id="alignLeftBtn">Izq</button>
+                    <button type="button" id="alignCenterBtn">Centro</button>
+                    <button type="button" id="alignRightBtn">Der</button>
+                    <span class="format-sep"></span>
+                    <button type="button" id="writeStartBtn">Inicio</button>
+                    <button type="button" id="writeMiddleBtn">Medio</button>
+                    <button type="button" id="writeEndBtn">Final</button>
+                </div>
+
+                <input id="imageUploadInput" type="file" accept="image/png,image/jpeg,image/jpg,image/gif" style="display:none;" />
+
+                <div class="course-dropzone" id="courseDropZone">
+                    Arrastra y suelta una imagen aquí para insertarla automáticamente 📎
+                </div>
+
+                <div class="notion-editor-shell white-sheet" id="teacherEditorShell">
+                    <div id="teacherEditor"></div>
+                    <div class="sheet-click-area" id="sheetClickArea" aria-hidden="true"></div>
+                    <button type="button" class="inline-add-fab" id="inlineAddFab" onclick="openInlineMenuFromFab(event)">+</button>
+                    <div class="inline-add-menu" id="inlineAddMenu">
+                        <button type="button" onclick="insertInlineOption('text')">Texto</button>
+                        <button type="button" onclick="insertInlineOption('title')">Título</button>
+                        <button type="button" onclick="insertInlineOption('heading')">Encabezado</button>
+                        <button type="button" onclick="insertInlineOption('emoji')">Emoji</button>
+                        <button type="button" onclick="insertInlineOption('image_web')">Imagen web</button>
+                        <button type="button" onclick="insertInlineOption('image_file')">Imagen archivo</button>
+                        <button type="button" onclick="insertInlineOption('calendar')">Calendario tabla</button>
+                        <button type="button" onclick="insertInlineOption('calendar_normal')">Calendario normal</button>
+                    </div>
+                </div>
+            {% else %}
+                <h2>Contenido del docente</h2>
+                <div class="notion-editor-shell">
+                    <div id="studentReadOnly"></div>
+                </div>
+            {% endif %}
+        </div>
+
+        <div class="card">
+            {% if not is_teacher %}
+                <h2>Mi cuaderno y anotaciones</h2>
+                <p>Puedes subrayar, crear notas y guardar tu propio contenido.</p>
+                <div class="notion-editor-shell">
+                    <div id="studentNotes"></div>
+                </div>
+                <button class="btn btn-primary" onclick="saveStudentNotes()">Guardar anotaciones</button>
+
+                <h2 style="margin-top: 24px;">Preguntas al docente</h2>
+                <form method="POST" action="{{ url_for('course_new_question', page_id=page.id) }}" class="form">
+                    <div class="form-group">
+                        <label for="questionText">Pregunta o comentario</label>
+                        <textarea id="questionText" name="text" rows="3" required placeholder="Ej: ¿Puedes explicar otra vez este tema?"></textarea>
+                    </div>
+                    <button type="submit" class="btn btn-secondary">Enviar</button>
+                </form>
+            {% else %}
+                <h2>Preguntas de estudiantes</h2>
+                <p>Responde aquí para mantener el hilo de conversación por clase.</p>
+            {% endif %}
+
+            <div class="course-qa-list">
+                {% if questions %}
+                    {% for q in questions %}
+                    <div class="qa-card">
+                        <div class="qa-meta">
+                            <strong>{{ student_map[q.student_id].nombre if student_map.get(q.student_id) else 'Estudiante' }}</strong>
+                            <span>{{ q.created_at.strftime('%d/%m/%Y %H:%M') }}</span>
+                        </div>
+                        <p>{{ q.text }}</p>
+
+                        {% if answers_by_q.get(q.id) %}
+                            <div class="qa-answer-list">
+                                {% for a in answers_by_q.get(q.id) %}
+                                <div class="qa-answer-item">
+                                    <strong>{{ teacher_map[a.teacher_id].nombre if teacher_map.get(a.teacher_id) else 'Docente' }}</strong>
+                                    <span>{{ a.created_at.strftime('%d/%m/%Y %H:%M') }}</span>
+                                    <p>{{ a.text }}</p>
+                                </div>
+                                {% endfor %}
+                            </div>
+                        {% endif %}
+
+                        {% if is_teacher %}
+                        <form method="POST" action="{{ url_for('course_answer_question', question_id=q.id) }}" class="form" style="margin-top: 12px;">
+                            <div class="form-group">
+                                <label>Responder</label>
+                                <textarea name="text" rows="2" required placeholder="Escribe tu respuesta"></textarea>
+                            </div>
+                            <button type="submit" class="btn btn-secondary">Responder</button>
+                        </form>
+                        {% endif %}
+                    </div>
+                    {% endfor %}
+                {% else %}
+                    <p class="empty-text">Aún no hay preguntas en esta clase.</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@editorjs/editorjs@latest"></script>
+<script src="https://cdn.jsdelivr.net/npm/@editorjs/header@latest"></script>
+<script src="https://cdn.jsdelivr.net/npm/@editorjs/list@latest"></script>
+<script src="https://cdn.jsdelivr.net/npm/@editorjs/checklist@latest"></script>
+<script src="https://cdn.jsdelivr.net/npm/@editorjs/quote@latest"></script>
+<script src="https://cdn.jsdelivr.net/npm/@editorjs/delimiter@latest"></script>
+<script src="https://cdn.jsdelivr.net/npm/@editorjs/table@latest"></script>
+<script src="https://cdn.jsdelivr.net/npm/@editorjs/simple-image@latest"></script>
+<script src="https://cdn.jsdelivr.net/npm/@editorjs/marker@latest"></script>
+<script src="https://cdn.jsdelivr.net/npm/@editorjs/inline-code@latest"></script>
+<script src="https://cdn.jsdelivr.net/npm/@editorjs/paragraph@latest"></script>
+
+<script id="teacherContentJson" type="application/json">{{ page.content_json|safe }}</script>
+<script id="studentNotesJson" type="application/json">{{ note.notes_json|safe if note else '{"time":0,"blocks":[],"version":"2.28.2"}' }}</script>
+
+<script>
+const workspaceConfig = document.getElementById('courseWorkspaceConfig');
+const isTeacher = workspaceConfig?.dataset?.isTeacher === '1';
+const saveTeacherUrl = workspaceConfig?.dataset?.saveTeacherUrl || '';
+const publishPageUrl = workspaceConfig?.dataset?.publishPageUrl || '';
+const unpublishPageUrl = workspaceConfig?.dataset?.unpublishPageUrl || '';
+const pagePublished = workspaceConfig?.dataset?.pagePublished === '1';
+const saveNotesUrl = workspaceConfig?.dataset?.saveNotesUrl || '';
+const uploadImageUrl = workspaceConfig?.dataset?.uploadImageUrl || '';
+
+const teacherContentText = document.getElementById('teacherContentJson')?.textContent || '{}';
+const studentNotesText = document.getElementById('studentNotesJson')?.textContent || '{"time":0,"blocks":[],"version":"2.28.2"}';
+
+let teacherContent = { time: 0, blocks: [], version: '2.28.2' };
+let studentNotesContent = { time: 0, blocks: [], version: '2.28.2' };
+
+try { teacherContent = JSON.parse(teacherContentText); } catch (e) { }
+try { studentNotesContent = JSON.parse(studentNotesText); } catch (e) { }
+
+const globals = typeof window !== 'undefined' ? window : globalThis;
+
+function pickGlobal(...names) {
+    for (const name of names) {
+        if (name && typeof globals[name] !== 'undefined') {
+            return globals[name];
+        }
+    }
+    return null;
+}
+
+const ParagraphTool = pickGlobal('Paragraph');
+const HeaderTool = pickGlobal('Header');
+const ListTool = pickGlobal('List', 'EditorjsList');
+const ChecklistTool = pickGlobal('Checklist');
+const QuoteTool = pickGlobal('Quote');
+const DelimiterTool = pickGlobal('Delimiter');
+const TableTool = pickGlobal('Table');
+const ImageTool = pickGlobal('SimpleImage', 'ImageTool', 'Image');
+const MarkerTool = pickGlobal('Marker');
+const InlineCodeTool = pickGlobal('InlineCode');
+
+class MiniCalendarTool {
+    static get toolbox() {
+        return {
+            title: 'Calendario',
+            icon: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"><path d="M7 2v3M17 2v3M3 9h18M5 5h14a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2Z" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>'
+        };
+    }
+
+    static get isReadOnlySupported() {
+        return true;
+    }
+
+    constructor({ data, readOnly }) {
+        const now = new Date();
+        this.readOnly = !!readOnly;
+        this.data = {
+            year: Number.isInteger(data?.year) ? data.year : now.getFullYear(),
+            month: Number.isInteger(data?.month) ? data.month : now.getMonth(),
+            notes: typeof data?.notes === 'object' && data?.notes ? data.notes : {}
+        };
+        this.wrapper = null;
+    }
+
+    render() {
+        this.wrapper = document.createElement('div');
+        this.wrapper.className = 'mini-calendar';
+        this._draw();
+        return this.wrapper;
+    }
+
+    _dayKey(year, month, day) {
+        return `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+    }
+
+    _normalizeNoteEntry(entry) {
+        if (typeof entry === 'string') {
+            return { text: entry, color: '' };
+        }
+
+        if (entry && typeof entry === 'object') {
+            const text = typeof entry.text === 'string' ? entry.text : '';
+            const allowedColors = ['green', 'yellow', 'red'];
+            const color = allowedColors.includes(entry.color) ? entry.color : '';
+            return { text, color };
+        }
+
+        return { text: '', color: '' };
+    }
+
+    _renderDayEditor(editorHost, options) {
+        if (!editorHost) return;
+
+        const { key, day, month, year, noteEntry } = options;
+        let selectedColor = noteEntry.color || '';
+
+        editorHost.innerHTML = '';
+
+        const panel = document.createElement('div');
+        panel.className = 'mini-calendar-editor';
+
+        const title = document.createElement('strong');
+        title.textContent = `Editar ${day}/${month + 1}/${year}`;
+
+        const textInput = document.createElement('input');
+        textInput.type = 'text';
+        textInput.className = 'mini-calendar-editor-input';
+        textInput.placeholder = 'Texto o emoji (ej: 📚, examen, ❤️)';
+        textInput.value = noteEntry.text || '';
+
+        const emojiWrap = document.createElement('div');
+        emojiWrap.className = 'mini-calendar-editor-emojis';
+        const commonEmojis = ['📚', '✅', '📝', '🎯', '🧠', '💡', '🎉', '🔥', '⏰', '❗'];
+        commonEmojis.forEach((emoji) => {
+            const emojiBtn = document.createElement('button');
+            emojiBtn.type = 'button';
+            emojiBtn.className = 'mini-calendar-emoji-btn';
+            emojiBtn.textContent = emoji;
+            emojiBtn.title = `Usar ${emoji}`;
+            emojiBtn.addEventListener('click', () => {
+                const existing = textInput.value.trim();
+                textInput.value = existing ? `${existing} ${emoji}` : emoji;
+                textInput.focus();
+            });
+            emojiWrap.appendChild(emojiBtn);
+        });
+
+        const colorsWrap = document.createElement('div');
+        colorsWrap.className = 'mini-calendar-editor-colors';
+
+        const colorConfigs = [
+            { key: 'green', label: 'Verde' },
+            { key: 'yellow', label: 'Amarillo' },
+            { key: 'red', label: 'Rojo' }
+        ];
+
+        const colorButtons = [];
+
+        colorConfigs.forEach((cfg) => {
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = `mini-calendar-color-btn color-${cfg.key}`;
+            btn.textContent = cfg.label;
+            if (selectedColor === cfg.key) btn.classList.add('active');
+            btn.addEventListener('click', () => {
+                selectedColor = selectedColor === cfg.key ? '' : cfg.key;
+                colorButtons.forEach((item) => item.classList.remove('active'));
+                if (selectedColor === cfg.key) btn.classList.add('active');
+            });
+            colorButtons.push(btn);
+            colorsWrap.appendChild(btn);
+        });
+
+        const actions = document.createElement('div');
+        actions.className = 'mini-calendar-editor-actions';
+
+        const saveBtn = document.createElement('button');
+        saveBtn.type = 'button';
+        saveBtn.className = 'mini-calendar-editor-save';
+        saveBtn.textContent = 'Guardar día';
+        saveBtn.addEventListener('click', () => {
+            const text = textInput.value.trim();
+            if (text || selectedColor) {
+                this.data.notes[key] = { text, color: selectedColor };
+            } else {
+                delete this.data.notes[key];
+            }
+            this._draw();
+        });
+
+        const clearBtn = document.createElement('button');
+        clearBtn.type = 'button';
+        clearBtn.className = 'mini-calendar-editor-clear';
+        clearBtn.textContent = 'Limpiar';
+        clearBtn.addEventListener('click', () => {
+            delete this.data.notes[key];
+            this._draw();
+        });
+
+        const closeBtn = document.createElement('button');
+        closeBtn.type = 'button';
+        closeBtn.className = 'mini-calendar-editor-close';
+        closeBtn.textContent = 'Cerrar';
+        closeBtn.addEventListener('click', () => {
+            editorHost.innerHTML = '';
+            const active = this.wrapper?.querySelector('.mini-calendar-day.day-active');
+            if (active) active.classList.remove('day-active');
+        });
+
+        actions.appendChild(saveBtn);
+        actions.appendChild(clearBtn);
+        actions.appendChild(closeBtn);
+
+        panel.appendChild(title);
+        panel.appendChild(textInput);
+        panel.appendChild(emojiWrap);
+        panel.appendChild(colorsWrap);
+        panel.appendChild(actions);
+        editorHost.appendChild(panel);
+
+        window.requestAnimationFrame(() => {
+            textInput.focus();
+        });
+    }
+
+    _draw() {
+        if (!this.wrapper) return;
+
+        const monthNames = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
+        const weekNames = ['L', 'M', 'X', 'J', 'V', 'S', 'D'];
+
+        const year = this.data.year;
+        const month = this.data.month;
+
+        const firstDay = new Date(year, month, 1);
+        const daysInMonth = new Date(year, month + 1, 0).getDate();
+        const startOffset = (firstDay.getDay() + 6) % 7;
+
+        this.wrapper.innerHTML = '';
+
+        const header = document.createElement('div');
+        header.className = 'mini-calendar-header';
+
+        const prev = document.createElement('button');
+        prev.type = 'button';
+        prev.textContent = '‹';
+        prev.disabled = this.readOnly;
+        prev.addEventListener('click', () => {
+            if (this.data.month === 0) {
+                this.data.month = 11;
+                this.data.year -= 1;
+            } else {
+                this.data.month -= 1;
+            }
+            this._draw();
+        });
+
+        const title = document.createElement('strong');
+        title.textContent = `${monthNames[month]} ${year}`;
+
+        const next = document.createElement('button');
+        next.type = 'button';
+        next.textContent = '›';
+        next.disabled = this.readOnly;
+        next.addEventListener('click', () => {
+            if (this.data.month === 11) {
+                this.data.month = 0;
+                this.data.year += 1;
+            } else {
+                this.data.month += 1;
+            }
+            this._draw();
+        });
+
+        header.appendChild(prev);
+        header.appendChild(title);
+        header.appendChild(next);
+        this.wrapper.appendChild(header);
+
+        const grid = document.createElement('div');
+        grid.className = 'mini-calendar-grid';
+        const editorHost = document.createElement('div');
+        editorHost.className = 'mini-calendar-editor-host';
+
+        weekNames.forEach((name) => {
+            const wd = document.createElement('div');
+            wd.className = 'mini-calendar-weekday';
+            wd.textContent = name;
+            grid.appendChild(wd);
+        });
+
+        for (let i = 0; i < startOffset; i++) {
+            const empty = document.createElement('div');
+            empty.className = 'mini-calendar-empty';
+            grid.appendChild(empty);
+        }
+
+        for (let day = 1; day <= daysInMonth; day++) {
+            const key = this._dayKey(year, month, day);
+            const noteEntry = this._normalizeNoteEntry(this.data.notes[key]);
+            const note = noteEntry.text;
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = 'mini-calendar-day';
+            if (noteEntry.color) {
+                btn.classList.add(`color-${noteEntry.color}`);
+            }
+            btn.disabled = this.readOnly;
+            btn.innerHTML = `<span class="mini-calendar-day-top"><span class="mini-calendar-day-num">${day}</span><span class="mini-calendar-color ${noteEntry.color ? 'active color-' + noteEntry.color : ''}"></span></span><small class="mini-calendar-note">${note ? note : '—'}</small>`;
+            btn.title = note || 'Sin nota';
+            btn.addEventListener('click', () => {
+                if (this.readOnly) return;
+                const previousActive = this.wrapper?.querySelector('.mini-calendar-day.day-active');
+                if (previousActive) previousActive.classList.remove('day-active');
+                btn.classList.add('day-active');
+
+                this._renderDayEditor(editorHost, {
+                    key,
+                    day,
+                    month,
+                    year,
+                    noteEntry
+                });
+            });
+            grid.appendChild(btn);
+        }
+
+        this.wrapper.appendChild(grid);
+        if (!this.readOnly) {
+            this.wrapper.appendChild(editorHost);
+        }
+    }
+
+    save() {
+        return {
+            year: this.data.year,
+            month: this.data.month,
+            notes: this.data.notes
+        };
+    }
+}
+
+const commonTools = {};
+if (ParagraphTool) commonTools.paragraph = { class: ParagraphTool, inlineToolbar: true };
+if (HeaderTool) commonTools.header = HeaderTool;
+if (ListTool) commonTools.list = ListTool;
+if (ChecklistTool) commonTools.checklist = ChecklistTool;
+if (QuoteTool) commonTools.quote = QuoteTool;
+if (DelimiterTool) commonTools.delimiter = DelimiterTool;
+if (TableTool) commonTools.table = TableTool;
+if (ImageTool) commonTools.image = ImageTool;
+if (MarkerTool) commonTools.marker = MarkerTool;
+if (InlineCodeTool) commonTools.inlineCode = InlineCodeTool;
+commonTools.miniCalendar = MiniCalendarTool;
+
+if (isTeacher) {
+    if (!globals.EditorJS) {
+        alert('No se pudo cargar el editor. Recarga la página e inténtalo de nuevo.');
+        throw new Error('EditorJS global not available');
+    }
+
+    const teacherEditor = new EditorJS({
+        holder: 'teacherEditor',
+        data: teacherContent,
+        tools: commonTools,
+        autofocus: true,
+        defaultBlock: commonTools.paragraph ? 'paragraph' : undefined,
+        onReady: async () => {
+            try {
+                const blockCount = teacherEditor.blocks.getBlocksCount();
+                if (blockCount === 0) {
+                    teacherEditor.blocks.insert('paragraph', { text: '' }, {}, 0, true);
+                }
+            } catch (error) {
+            }
+        }
+    });
+
+    const inlineAddMenu = document.getElementById('inlineAddMenu');
+    const hiddenFileInput = document.getElementById('imageUploadInput');
+    const fontFamilySelect = document.getElementById('fontFamilySelect');
+    const fontSizeSelect = document.getElementById('fontSizeSelect');
+    const boldTextBtn = document.getElementById('boldTextBtn');
+    const italicTextBtn = document.getElementById('italicTextBtn');
+    const underlineTextBtn = document.getElementById('underlineTextBtn');
+    const textColorInput = document.getElementById('textColorInput');
+    const highlightColorInput = document.getElementById('highlightColorInput');
+    const alignLeftBtn = document.getElementById('alignLeftBtn');
+    const alignCenterBtn = document.getElementById('alignCenterBtn');
+    const alignRightBtn = document.getElementById('alignRightBtn');
+    const writeStartBtn = document.getElementById('writeStartBtn');
+    const writeMiddleBtn = document.getElementById('writeMiddleBtn');
+    const writeEndBtn = document.getElementById('writeEndBtn');
+    let pendingInsertType = null;
+    let activeEditable = null;
+    let writeMode = 'end';
+
+    function syncWriteModeButtons() {
+        [writeStartBtn, writeMiddleBtn, writeEndBtn].forEach((btn) => btn?.classList.remove('active'));
+        if (writeMode === 'start') writeStartBtn?.classList.add('active');
+        if (writeMode === 'middle') writeMiddleBtn?.classList.add('active');
+        if (writeMode === 'end') writeEndBtn?.classList.add('active');
+    }
+
+    function getInsertIndex() {
+        try {
+            const currentIndex = teacherEditor.blocks.getCurrentBlockIndex();
+            if (typeof currentIndex === 'number' && currentIndex >= 0) {
+                return currentIndex + 1;
+            }
+        } catch (error) {
+        }
+        return teacherEditor.blocks.getBlocksCount();
+    }
+
+    function insertAtCursor(type, data) {
+        teacherEditor.blocks.insert(type, data || {}, {}, getInsertIndex(), true);
+    }
+
+    function insertAtIndex(type, data, index) {
+        teacherEditor.blocks.insert(type, data || {}, {}, index, true);
+        return index;
+    }
+
+    function resolveInsertIndexByMode() {
+        const count = teacherEditor.blocks.getBlocksCount();
+        if (writeMode === 'start') return 0;
+        if (writeMode === 'middle') return Math.floor(count / 2);
+        return count;
+    }
+
+    function insertByWriteMode(type, data) {
+        const index = resolveInsertIndexByMode();
+        teacherEditor.blocks.insert(type, data || {}, {}, index, true);
+        return index;
+    }
+
+    function resolveInsertIndexFromClick(event) {
+        const host = document.getElementById('teacherEditorShell');
+        if (!host) return teacherEditor.blocks.getBlocksCount();
+
+        const blocks = host.querySelectorAll('.ce-block');
+        if (!blocks.length) return 0;
+
+        for (let index = 0; index < blocks.length; index++) {
+            const rect = blocks[index].getBoundingClientRect();
+            const middleY = rect.top + rect.height / 2;
+            if (event.clientY < middleY) {
+                return index;
+            }
+        }
+        return blocks.length;
+    }
+
+    function focusEditableAtEnd(element) {
+        if (!element) return;
+        element.focus();
+        const selection = window.getSelection();
+        if (!selection) return;
+        const range = document.createRange();
+        range.selectNodeContents(element);
+        range.collapse(false);
+        selection.removeAllRanges();
+        selection.addRange(range);
+        activeEditable = element;
+    }
+
+    function focusLastEditableBlock() {
+        const host = document.getElementById('teacherEditorShell');
+        if (!host) return;
+        const editables = host.querySelectorAll('[contenteditable="true"]');
+        const last = editables[editables.length - 1];
+        if (last) focusEditableAtEnd(last);
+    }
+
+    function focusEditableByBlockIndex(index) {
+        const host = document.getElementById('teacherEditorShell');
+        if (!host || typeof index !== 'number' || index < 0) return;
+        const blocks = host.querySelectorAll('.ce-block');
+        const block = blocks[index];
+        if (!block) {
+            focusLastEditableBlock();
+            return;
+        }
+        const editable = block.querySelector('[contenteditable="true"]');
+        if (editable) {
+            focusEditableAtEnd(editable);
+        } else {
+            focusLastEditableBlock();
+        }
+    }
+
+    function getCurrentEditable() {
+        const host = document.getElementById('teacherEditorShell');
+        if (!host) return null;
+        if (activeEditable && host.contains(activeEditable)) return activeEditable;
+        const current = document.activeElement;
+        if (current && host.contains(current) && current.getAttribute('contenteditable') === 'true') {
+            return current;
+        }
+        return null;
+    }
+
+    function applyBlockStyle(styleName, value) {
+        const editable = getCurrentEditable();
+        if (!editable) return;
+        editable.style[styleName] = value;
+    }
+
+    function setTextAlign(value) {
+        applyBlockStyle('textAlign', value);
+    }
+
+    function applyFontFamily(value) {
+        if (!value) return;
+        applyBlockStyle('fontFamily', value);
+    }
+
+    function applyFontSize(value) {
+        if (!value) return;
+        applyBlockStyle('fontSize', value);
+    }
+
+    function applyBold() {
+        const editable = getCurrentEditable();
+        if (!editable) return;
+        editable.focus();
+        document.execCommand('bold');
+    }
+
+    function applyItalic() {
+        const editable = getCurrentEditable();
+        if (!editable) return;
+        editable.focus();
+        document.execCommand('italic');
+    }
+
+    function applyUnderline() {
+        const editable = getCurrentEditable();
+        if (!editable) return;
+        editable.focus();
+        document.execCommand('underline');
+    }
+
+    function applyTextColor(color) {
+        const editable = getCurrentEditable();
+        if (!editable || !color) return;
+        editable.focus();
+        document.execCommand('styleWithCSS', false, true);
+        document.execCommand('foreColor', false, color);
+    }
+
+    function applyHighlightColor(color) {
+        const editable = getCurrentEditable();
+        if (!editable || !color) return;
+        editable.focus();
+        document.execCommand('styleWithCSS', false, true);
+        const applied = document.execCommand('hiliteColor', false, color);
+        if (!applied) {
+            document.execCommand('backColor', false, color);
+        }
+    }
+
+    function hideInlineMenu() {
+        inlineAddMenu?.classList.remove('show');
+    }
+
+    function showInlineMenuAt(event) {
+        if (!inlineAddMenu) return;
+        const host = document.getElementById('teacherEditorShell');
+        if (!host) return;
+        const hostRect = host.getBoundingClientRect();
+        const x = Math.min(Math.max(event.clientX - hostRect.left, 12), hostRect.width - 220);
+        const y = Math.min(Math.max(event.clientY - hostRect.top, 12), hostRect.height - 180);
+        inlineAddMenu.style.left = `${x}px`;
+        inlineAddMenu.style.top = `${y}px`;
+        inlineAddMenu.classList.add('show');
+    }
+
+    function targetClosest(target, selector) {
+        if (!target) return null;
+        if (typeof target.closest === 'function') return target.closest(selector);
+        const parent = target.parentElement;
+        if (parent && typeof parent.closest === 'function') return parent.closest(selector);
+        return null;
+    }
+
+    window.openInlineMenuFromFab = function openInlineMenuFromFab(event) {
+        event.preventDefault();
+        event.stopPropagation();
+        showInlineMenuAt(event);
+    };
+
+    window.insertInlineOption = function insertInlineOption(kind) {
+        hideInlineMenu();
+
+        if (kind === 'title') {
+            if (commonTools.header) {
+                insertAtCursor('header', { text: '📝 Nuevo título', level: 2 });
+            } else {
+                insertAtCursor('paragraph', { text: '📝 Nuevo título' });
+            }
+            return;
+        }
+        if (kind === 'heading') {
+            if (commonTools.header) {
+                insertAtCursor('header', { text: 'Subtema', level: 3 });
+            } else {
+                insertAtCursor('paragraph', { text: 'Subtema' });
+            }
+            return;
+        }
+        if (kind === 'text') {
+            insertAtCursor('paragraph', { text: 'Escribe aquí tu contenido...' });
+            return;
+        }
+        if (kind === 'emoji') {
+            insertAtCursor('paragraph', { text: '😀 ✨ 📚 ✅' });
+            return;
+        }
+
+        if (kind === 'image_web') {
+            const keyword = prompt('¿Qué imagen quieres buscar en internet?');
+            if (!keyword || !keyword.trim()) return;
+            if (commonTools.image) {
+                insertAtCursor('image', {
+                    url: `https://source.unsplash.com/1200x700/?${encodeURIComponent(keyword.trim())}`,
+                    caption: `Imagen: ${keyword.trim()}`,
+                    withBorder: false,
+                    withBackground: false,
+                    stretched: false
+                });
+            } else {
+                insertAtCursor('paragraph', {
+                    text: `Imagen: https://source.unsplash.com/1200x700/?${encodeURIComponent(keyword.trim())}`
+                });
+            }
+            return;
+        }
+
+        if (kind === 'image_file') {
+            pendingInsertType = 'image_file';
+            hiddenFileInput?.click();
+            return;
+        }
+
+        if (kind === 'calendar') {
+            const today = new Date();
+            const d1 = today.toISOString().slice(0, 10);
+            const d2 = new Date(today.getTime() + 86400000).toISOString().slice(0, 10);
+            const d3 = new Date(today.getTime() + 2 * 86400000).toISOString().slice(0, 10);
+
+            if (commonTools.header) {
+                insertAtCursor('header', { text: '📅 Calendario', level: 3 });
+            } else {
+                insertAtCursor('paragraph', { text: '📅 Calendario' });
+            }
+
+            if (commonTools.table) {
+                insertAtCursor('table', {
+                    withHeadings: true,
+                    content: [
+                        ['Fecha', 'Actividad', 'Estado'],
+                        [d1, 'Clase en vivo', 'Pendiente'],
+                        [d2, 'Práctica guiada', 'Pendiente'],
+                        [d3, 'Entrega tarea', 'Pendiente']
+                    ]
+                });
+            } else {
+                insertAtCursor('paragraph', { text: `${d1} — Clase en vivo — Pendiente` });
+                insertAtCursor('paragraph', { text: `${d2} — Práctica guiada — Pendiente` });
+                insertAtCursor('paragraph', { text: `${d3} — Entrega tarea — Pendiente` });
+            }
+            return;
+        }
+
+        if (kind === 'calendar_normal') {
+            insertAtCursor('miniCalendar', {
+                year: new Date().getFullYear(),
+                month: new Date().getMonth(),
+                notes: {}
+            });
+            return;
+        }
+    };
+
+    async function uploadFileAndInsert(file) {
+        if (!file) {
+            alert('Selecciona una imagen primero.');
+            return;
+        }
+
+        const formData = new FormData();
+        formData.append('image', file);
+
+        try {
+            const response = await fetch(uploadImageUrl, {
+                method: 'POST',
+                body: formData
+            });
+
+            const result = await response.json();
+            if (!result.ok || !result.url) {
+                alert(result.error || 'No se pudo subir la imagen.');
+                return;
+            }
+
+            if (commonTools.image) {
+                insertAtCursor('image', {
+                    url: result.url,
+                    caption: file.name,
+                    withBorder: false,
+                    withBackground: false,
+                    stretched: false
+                });
+            } else {
+                insertAtCursor('paragraph', { text: `Imagen subida: ${result.url}` });
+            }
+        } catch (error) {
+            alert('Error al subir la imagen.');
+        }
+    }
+
+    hiddenFileInput?.addEventListener('change', async () => {
+        if (pendingInsertType !== 'image_file') return;
+        const file = hiddenFileInput.files?.[0];
+        await uploadFileAndInsert(file);
+        hiddenFileInput.value = '';
+        pendingInsertType = null;
+    });
+
+    const editorShellClick = document.getElementById('teacherEditorShell');
+    editorShellClick?.addEventListener('focusin', (event) => {
+        const target = event.target;
+        if (target && target.getAttribute && target.getAttribute('contenteditable') === 'true') {
+            activeEditable = target;
+        }
+    });
+
+    editorShellClick?.addEventListener('click', (event) => {
+        const inMenu = targetClosest(event.target, '#inlineAddMenu');
+        const inToolbar = targetClosest(event.target, '.ce-toolbar, .ce-inline-toolbar, .ce-settings, .ce-conversion-toolbar');
+        const inEditableBlock = targetClosest(event.target, '.ce-block, .ce-paragraph, .ce-header, .ce-delimiter, .cdx-list');
+        const inSheetArea = targetClosest(event.target, '#sheetClickArea');
+        const inFormatBar = targetClosest(event.target, '#textFormatBar');
+        const inFab = targetClosest(event.target, '#inlineAddFab');
+        if (inFab) return;
+        if (inMenu || inToolbar || inEditableBlock || inFormatBar) return;
+        hideInlineMenu();
+        const clickIndex = inSheetArea ? teacherEditor.blocks.getBlocksCount() : resolveInsertIndexFromClick(event);
+        const index = insertAtIndex('paragraph', { text: '' }, clickIndex);
+        window.setTimeout(() => {
+            focusEditableByBlockIndex(index);
+        }, 40);
+    });
+
+    document.addEventListener('click', (event) => {
+        if (!targetClosest(event.target, '#teacherEditorShell')) {
+            hideInlineMenu();
+        }
+    });
+
+    fontFamilySelect?.addEventListener('change', () => {
+        applyFontFamily(fontFamilySelect.value);
+    });
+
+    fontSizeSelect?.addEventListener('change', () => {
+        applyFontSize(fontSizeSelect.value);
+    });
+
+    boldTextBtn?.addEventListener('click', () => {
+        applyBold();
+    });
+
+    italicTextBtn?.addEventListener('click', () => {
+        applyItalic();
+    });
+
+    underlineTextBtn?.addEventListener('click', () => {
+        applyUnderline();
+    });
+
+    textColorInput?.addEventListener('input', () => {
+        applyTextColor(textColorInput.value);
+    });
+
+    highlightColorInput?.addEventListener('input', () => {
+        applyHighlightColor(highlightColorInput.value);
+    });
+
+    alignLeftBtn?.addEventListener('click', () => {
+        setTextAlign('left');
+    });
+
+    alignCenterBtn?.addEventListener('click', () => {
+        setTextAlign('center');
+    });
+
+    alignRightBtn?.addEventListener('click', () => {
+        setTextAlign('right');
+    });
+
+    writeStartBtn?.addEventListener('click', () => {
+        writeMode = 'start';
+        syncWriteModeButtons();
+        const index = insertByWriteMode('paragraph', { text: '' });
+        window.setTimeout(() => {
+            focusEditableByBlockIndex(index);
+        }, 40);
+    });
+
+    writeMiddleBtn?.addEventListener('click', () => {
+        writeMode = 'middle';
+        syncWriteModeButtons();
+        const index = insertByWriteMode('paragraph', { text: '' });
+        window.setTimeout(() => {
+            focusEditableByBlockIndex(index);
+        }, 40);
+    });
+
+    writeEndBtn?.addEventListener('click', () => {
+        writeMode = 'end';
+        syncWriteModeButtons();
+        const index = insertByWriteMode('paragraph', { text: '' });
+        window.setTimeout(() => {
+            focusEditableByBlockIndex(index);
+        }, 40);
+    });
+
+    syncWriteModeButtons();
+
+    const dropZone = document.getElementById('courseDropZone');
+    const editorShell = document.getElementById('teacherEditorShell');
+
+    function activateDrop() {
+        dropZone?.classList.add('drag-active');
+        editorShell?.classList.add('drag-active');
+    }
+
+    function deactivateDrop() {
+        dropZone?.classList.remove('drag-active');
+        editorShell?.classList.remove('drag-active');
+    }
+
+    ['dragenter', 'dragover'].forEach((eventName) => {
+        dropZone?.addEventListener(eventName, (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            activateDrop();
+        });
+    });
+
+    ['dragleave', 'dragend', 'drop'].forEach((eventName) => {
+        dropZone?.addEventListener(eventName, (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            deactivateDrop();
+        });
+    });
+
+    dropZone?.addEventListener('drop', async (event) => {
+        const file = event.dataTransfer?.files?.[0];
+        if (!file) return;
+        const validType = ['image/png', 'image/jpeg', 'image/jpg', 'image/gif'].includes(file.type);
+        if (!validType) {
+            alert('Solo puedes arrastrar imágenes PNG/JPG/GIF.');
+            return;
+        }
+        await uploadFileAndInsert(file);
+    });
+
+    window.saveTeacherContent = async function saveTeacherContent() {
+        try {
+            const data = await teacherEditor.save();
+            const response = await fetch(saveTeacherUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(data)
+            });
+
+            const result = await response.json();
+            if (result.ok) {
+                alert('Contenido guardado ✅');
+            } else {
+                alert(result.error || 'No se pudo guardar el contenido');
+            }
+        } catch (error) {
+            alert('Error al guardar contenido');
+        }
+    };
+
+    window.publishTeacherPage = async function publishTeacherPage() {
+        try {
+            const data = await teacherEditor.save();
+            const saveResponse = await fetch(saveTeacherUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(data)
+            });
+
+            const saveResult = await saveResponse.json();
+            if (!saveResult.ok) {
+                alert(saveResult.error || 'No se pudo guardar antes de publicar');
+                return;
+            }
+
+            const publishResponse = await fetch(publishPageUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+                body: JSON.stringify({})
+            });
+
+            const publishResult = await publishResponse.json();
+            if (!publishResult.ok) {
+                alert(publishResult.error || 'No se pudo publicar la hoja');
+                return;
+            }
+
+            const stateNode = document.getElementById('pagePublishState');
+            if (stateNode) stateNode.textContent = 'Publicada';
+            const publishBtn = document.getElementById('publishPageBtn');
+            if (publishBtn) publishBtn.remove();
+            if (!document.getElementById('unpublishPageBtn')) {
+                const saveBtn = document.querySelector('.workspace-topbar .btn.btn-primary');
+                if (saveBtn && saveBtn.parentElement) {
+                    const unpublishBtn = document.createElement('button');
+                    unpublishBtn.className = 'btn btn-secondary';
+                    unpublishBtn.id = 'unpublishPageBtn';
+                    unpublishBtn.textContent = 'Despublicar hoja';
+                    unpublishBtn.addEventListener('click', window.unpublishTeacherPage);
+                    saveBtn.parentElement.appendChild(unpublishBtn);
+                }
+            }
+            alert('Hoja publicada ✅');
+        } catch (error) {
+            alert('Error al publicar la hoja');
+        }
+    };
+
+    window.unpublishTeacherPage = async function unpublishTeacherPage() {
+        try {
+            const response = await fetch(unpublishPageUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+                body: JSON.stringify({})
+            });
+
+            const result = await response.json();
+            if (!result.ok) {
+                alert(result.error || 'No se pudo despublicar la hoja');
+                return;
+            }
+
+            const stateNode = document.getElementById('pagePublishState');
+            if (stateNode) stateNode.textContent = 'Borrador';
+            const unpublishBtn = document.getElementById('unpublishPageBtn');
+            if (unpublishBtn) unpublishBtn.remove();
+            if (!document.getElementById('publishPageBtn')) {
+                const saveBtn = document.querySelector('.workspace-topbar .btn.btn-primary');
+                if (saveBtn && saveBtn.parentElement) {
+                    const publishBtn = document.createElement('button');
+                    publishBtn.className = 'btn btn-secondary';
+                    publishBtn.id = 'publishPageBtn';
+                    publishBtn.textContent = 'Publicar hoja';
+                    publishBtn.addEventListener('click', window.publishTeacherPage);
+                    saveBtn.parentElement.appendChild(publishBtn);
+                }
+            }
+            alert('Hoja despublicada ✅');
+        } catch (error) {
+            alert('Error al despublicar la hoja');
+        }
+    };
+} else {
+    new EditorJS({
+        holder: 'studentReadOnly',
+        data: teacherContent,
+        readOnly: true,
+        tools: commonTools
+    });
+
+    const studentNotesEditor = new EditorJS({
+        holder: 'studentNotes',
+        data: studentNotesContent,
+        tools: commonTools
+    });
+
+    window.saveStudentNotes = async function saveStudentNotes() {
+        try {
+            const data = await studentNotesEditor.save();
+            const response = await fetch(saveNotesUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(data)
+            });
+
+            const result = await response.json();
+            if (result.ok) {
+                alert('Anotaciones guardadas ✅');
+            } else {
+                alert(result.error || 'No se pudieron guardar las anotaciones');
+            }
+        } catch (error) {
+            alert('Error al guardar anotaciones');
+        }
+    };
+}
+</script>
+{% endblock %}

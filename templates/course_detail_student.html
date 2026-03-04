@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+
+{% block title %}{{ course.title }} - {{ t('nav_courses') }}{% endblock %}
+
+{% block content %}
+<div class="container course-space">
+    <div class="card">
+        <div class="course-header-row">
+            <div>
+                <h1>{{ course.title }}</h1>
+                <p>{{ course.description or 'Sin descripción del curso.' }}</p>
+                <small>Docente: {{ teacher.nombre or teacher.username }}</small>
+            </div>
+            <a class="btn btn-secondary" href="{{ url_for('courses') }}">Volver</a>
+        </div>
+    </div>
+
+    <div class="course-grid single-column">
+        <div class="card">
+            <h2>Clases</h2>
+            {% if pages %}
+                <div class="course-list">
+                    {% for page in pages %}
+                    <a class="course-item" href="{{ url_for('course_page_view', page_id=page.id) }}">
+                        <div>
+                            <h3>{{ page.title }}</h3>
+                            <small>Ver contenido, hacer anotaciones y preguntas</small>
+                        </div>
+                        <span>Ver</span>
+                    </a>
+                    {% endfor %}
+                </div>
+            {% else %}
+                <p class="empty-text">El docente aún no publica hojas para ti.</p>
+            {% endif %}
+        </div>
+
+        <div class="card">
+            <h2>Calendario del curso</h2>
+            <div class="course-calendar-list">
+                {% if events %}
+                    {% for event in events %}
+                    <div class="calendar-item">
+                        <strong>{{ event.title }}</strong>
+                        <small>{{ event.event_date.strftime('%d/%m/%Y %H:%M') }}</small>
+                        {% if event.description %}<p>{{ event.description }}</p>{% endif %}
+                    </div>
+                    {% endfor %}
+                {% else %}
+                    <p class="empty-text">No hay eventos programados en este curso.</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,179 @@
+{% extends "base.html" %}
+
+{% block title %}{{ assignment.titulo }} - English Academy{% endblock %}
+
+{% block content %}
+<div class="container">
+    <div class="assignment-detail">
+        <div class="assignment-header">
+            <h1>{{ assignment.titulo }}</h1>
+            <div class="assignment-meta">
+                <span class="meta-item">📅 Fecha límite: {{ assignment.fecha_entrega.strftime('%d/%m/%Y %H:%M') }}</span>
+                <span class="meta-item">👨‍🏫 {{ assignment.profesor.nombre }}</span>
+            </div>
+        </div>
+        
+        <div class="assignment-content">
+            <section class="section">
+                <h2>📝 Descripción</h2>
+                <div class="description-box">
+                    {{ assignment.descripcion }}
+                </div>
+            </section>
+            
+            {% if session.role == 'student' %}
+                <!-- Vista de Estudiante -->
+                <section class="section">
+                    <h2>📤 Mi Entrega</h2>
+                    
+                    {% if mi_entrega %}
+                        <div class="submission-status completed">
+                            <h3>✅ Tarea Entregada</h3>
+                            <p>Fecha de entrega: <strong>{{ mi_entrega.fecha_entrega.strftime('%d/%m/%Y %H:%M') }}</strong></p>
+                            
+                            <div class="submission-info">
+                                <a href="{{ url_for('download_submission', submission_id=mi_entrega.id) }}" class="btn btn-primary">📥 Descargar Mi Entrega</a>
+                            </div>
+                            
+                            {% if mi_entrega.calificacion is not none %}
+                            <div class="grade-box">
+                                <h4>Calificación</h4>
+                                <div class="grade-score">{{ mi_entrega.calificacion }}/100</div>
+                                {% if mi_entrega.comentario %}
+                                <div class="grade-comment">
+                                    <h4>Comentario del Maestro:</h4>
+                                    <p>{{ mi_entrega.comentario }}</p>
+                                </div>
+                                {% endif %}
+                            </div>
+                            {% else %}
+                            <div class="grade-pending">
+                                <p>⏳ Pendiente de calificación</p>
+                            </div>
+                            {% endif %}
+                        </div>
+                        
+                        <form method="POST" action="{{ url_for('submit_assignment', assignment_id=assignment.id) }}" 
+                              enctype="multipart/form-data" class="submission-form">
+                            <h3>Actualizar Entrega</h3>
+                            <div class="form-group">
+                                <label for="archivo">Nuevo Archivo:</label>
+                                <input type="file" id="archivo" name="archivo" required>
+                            </div>
+                            <button type="submit" class="btn btn-primary">Reenviar Tarea</button>
+                        </form>
+                    {% else %}
+                        {% if assignment.fecha_entrega > now %}
+                            <div class="submission-status pending">
+                                <h3>⏳ Pendiente de Entrega</h3>
+                                <form method="POST" action="{{ url_for('submit_assignment', assignment_id=assignment.id) }}" 
+                                      enctype="multipart/form-data" class="submission-form">
+                                    <div class="form-group">
+                                        <label for="archivo">Selecciona tu archivo:</label>
+                                        <input type="file" id="archivo" name="archivo" required>
+                                    </div>
+                                    <button type="submit" class="btn btn-primary btn-large">📤 Entregar Tarea</button>
+                                </form>
+                            </div>
+                        {% else %}
+                            <div class="submission-status overdue">
+                                <h3>❌ Plazo Vencido</h3>
+                                <p>El plazo para entregar esta tarea venció el {{ assignment.fecha_entrega.strftime('%d/%m/%Y %H:%M') }}</p>
+                            </div>
+                        {% endif %}
+                    {% endif %}
+                </section>
+            
+            {% elif session.role == 'teacher' %}
+                <!-- Vista de Maestro -->
+                <section class="section">
+                    <div class="section-header">
+                        <h2>📊 Entregas de Estudiantes</h2>
+                        <a href="{{ url_for('edit_assignment', assignment_id=assignment.id) }}" class="btn btn-small">Editar</a>
+                    </div>
+                    
+                    {% if entregas %}
+                        <div class="submissions-table">
+                            <table class="table">
+                                <thead>
+                                    <tr>
+                                        <th>Estudiante</th>
+                                        <th>Fecha de Entrega</th>
+                                        <th>Calificación</th>
+                                        <th>Acciones</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for entrega in entregas %}
+                                    <tr>
+                                        <td>{{ entrega.estudiante.nombre }}</td>
+                                        <td>{{ entrega.fecha_entrega.strftime('%d/%m/%Y %H:%M') }}</td>
+                                        <td>
+                                            {% if entrega.calificacion is not none %}
+                                                <strong>{{ entrega.calificacion }}/100</strong>
+                                            {% else %}
+                                                <span class="grade-pending">Pendiente</span>
+                                            {% endif %}
+                                        </td>
+                                        <td>
+                                            <a href="{{ url_for('download_submission', submission_id=entrega.id) }}" class="btn-action">Descargar</a>
+                                            <button class="btn-action" onclick="openGradeModal({{ entrega.id }}, {{ entrega.calificacion or 0 }}, '{{ entrega.comentario or '' }}')">Calificar</button>
+                                        </td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    {% else %}
+                        <p class="empty-state">Aún no hay entregas.</p>
+                    {% endif %}
+                </section>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<!-- Modal de Calificación -->
+{% if session.role == 'teacher' %}
+<div id="gradeModal" class="modal" style="display: none;">
+    <div class="modal-content">
+        <span class="close" onclick="closeGradeModal()">&times;</span>
+        <h2>📊 Calificar Entrega</h2>
+        
+        <form id="gradeForm" method="POST" action="">
+            <div class="form-group">
+                <label for="calificacion">Calificación (0-100):</label>
+                <input type="number" id="calificacion" name="calificacion" min="0" max="100" required>
+            </div>
+            
+            <div class="form-group">
+                <label for="comentario">Comentario:</label>
+                <textarea id="comentario" name="comentario" rows="4" placeholder="Retroalimentación para el estudiante..."></textarea>
+            </div>
+            
+            <button type="submit" class="btn btn-primary">Guardar Calificación</button>
+        </form>
+    </div>
+</div>
+
+<script>
+function openGradeModal(submissionId, currentGrade, currentComment) {
+    document.getElementById('gradeModal').style.display = 'block';
+    document.getElementById('calificacion').value = currentGrade;
+    document.getElementById('comentario').value = currentComment;
+    document.getElementById('gradeForm').action = `{{ url_for('grade_submission', submission_id='REPLACE') }}`.replace('REPLACE', submissionId);
+}
+
+function closeGradeModal() {
+    document.getElementById('gradeModal').style.display = 'none';
+}
+
+window.onclick = function(event) {
+    const modal = document.getElementById('gradeModal');
+    if (event.target == modal) {
+        modal.style.display = 'none';
+    }
+}
+</script>
+{% endif %}
+{% endblock %}

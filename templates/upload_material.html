@@ -1,0 +1,338 @@
+{% extends "base.html" %}
+
+{% block title %}Subir Material - English Academy{% endblock %}
+
+{% block content %}
+<div class="container">
+    <div class="notion-upload-shell">
+        <div class="notion-upload-header">
+            <h1>📚 Content Workspace</h1>
+            <p class="subtitle">Professional planning board with calendar, scheduling and structured publishing.</p>
+        </div>
+
+        <div class="notion-upload-layout">
+            <form method="POST" enctype="multipart/form-data" class="form notion-upload-form">
+                <div class="notion-properties">
+                    <h3>Properties</h3>
+
+                    <div class="form-group">
+                        <label for="titulo">Title</label>
+                        <input type="text" id="titulo" name="titulo" placeholder="Example: Business English Vocabulary" required>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="descripcion">Description</label>
+                        <textarea id="descripcion" name="descripcion" rows="4" placeholder="Add context, goals and instructions for students..."></textarea>
+                    </div>
+
+                    <div class="notion-grid-2">
+                        <div class="form-group">
+                            <label for="board_status">Status</label>
+                            <select id="board_status" name="board_status">
+                                <option value="draft">Draft</option>
+                                <option value="planned">Planned</option>
+                                <option value="published" selected>Published</option>
+                            </select>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="scheduled_for">Calendar (date & time)</label>
+                            <input type="datetime-local" id="scheduled_for" name="scheduled_for">
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="target_student_id">Audience</label>
+                        <select id="target_student_id" name="target_student_id">
+                            <option value="">All students</option>
+                            {% for student in students %}
+                                <option value="{{ student.id }}">{{ student.nombre }} (@{{ student.username }})</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                </div>
+
+                <div class="notion-content">
+                    <h3>Content</h3>
+
+                    <div class="form-group">
+                        <label for="tipo">Tipo de contenido / Content type</label>
+                        <div class="material-type-quick-actions" style="display:grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap:8px; margin-bottom:10px;">
+                            <button type="button" class="btn btn-secondary" onclick="chooseMaterialType('video')">🎥 Subir Video (link)</button>
+                            <button type="button" class="btn btn-secondary" onclick="chooseMaterialType('documento')">📃 Subir Documento (Word)</button>
+                            <button type="button" class="btn btn-secondary" onclick="chooseMaterialType('pdf')">📄 Subir PDF</button>
+                            <button type="button" class="btn btn-secondary" onclick="chooseMaterialType('imagen')">🖼️ Subir Imagen</button>
+                        </div>
+                        <select id="tipo" name="tipo" required onchange="updateMaterialType()">
+                            <option value="">Selecciona tipo / Select type...</option>
+                            <option value="pdf">📄 PDF</option>
+                            <option value="imagen">🖼️ Image</option>
+                            <option value="documento">📃 Document (Word, etc)</option>
+                            <option value="video">🎥 Video (Link)</option>
+                        </select>
+                    </div>
+
+                    <div id="file-section" class="form-group" style="display: none;">
+                        <label for="archivo">Upload file (max 50MB)</label>
+                        <div class="notion-file-dropzone">
+                            <input type="file" id="archivo" name="archivo" accept=".pdf,.jpg,.jpeg,.png,.gif,.doc,.docx" onchange="syncFileName()">
+                            <p id="file-name-text">Choose a file or drag and drop here</p>
+                        </div>
+                    </div>
+
+                    <div id="video-section" class="form-group" style="display: none;">
+                        <label for="url_video">Video URL</label>
+                        <input type="url" id="url_video" name="url_video" placeholder="https://youtube.com/... or https://drive.google.com/...">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="planning_items">To-do checklist (one item per line)</label>
+                        <textarea id="planning_items" name="planning_items" rows="5" placeholder="Define intro activity&#10;Prepare speaking prompts&#10;Add homework notes"></textarea>
+                    </div>
+                </div>
+
+                <div class="form-actions">
+                    <button type="submit" class="btn btn-primary">Publish Material</button>
+                    <a href="{{ url_for('dashboard_teacher') }}" class="btn btn-secondary">Cancel</a>
+                </div>
+            </form>
+
+            <aside class="notion-calendar-panel full-width teacher-calendar-section">
+                <div class="notion-calendar-card">
+                    <h3>Calendar</h3>
+                    <div class="calendar-nav" style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; gap:8px;">
+                        <button type="button" class="btn btn-small btn-secondary" onclick="changeTeacherMonth(-1)">◀</button>
+                        <div class="calendar-month-label" id="calendar-month-label"></div>
+                        <button type="button" class="btn btn-small btn-secondary" onclick="changeTeacherMonth(1)">▶</button>
+                    </div>
+                    <div class="calendar-weekdays">
+                        <span>Sun</span><span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span>
+                    </div>
+                    <div id="calendar-grid" class="calendar-grid calendar-grid-large"></div>
+                </div>
+
+                <div class="notion-calendar-card">
+                    <h3>Upcoming scheduled materials</h3>
+                    {% if scheduled_materials %}
+                        <div class="calendar-events-list">
+                            {% for item in scheduled_materials %}
+                            <div class="calendar-event-item">
+                                <strong>{{ item.titulo }}</strong>
+                                <span>{{ item.scheduled_for.strftime('%d/%m/%Y %H:%M') }}</span>
+                            </div>
+                            {% endfor %}
+                        </div>
+                    {% else %}
+                        <p class="empty-state">No scheduled materials yet.</p>
+                    {% endif %}
+                </div>
+
+                <div class="notion-calendar-card">
+                    <h3>Tus tareas recientes</h3>
+                    {% if teacher_assignments %}
+                        <div class="calendar-events-list">
+                            {% for tarea in teacher_assignments %}
+                            <div class="calendar-event-item">
+                                <div>
+                                    <strong>{{ tarea.titulo }}</strong>
+                                    <span>Entrega: {{ tarea.fecha_entrega.strftime('%d/%m/%Y %H:%M') }}</span>
+                                </div>
+                                <form method="POST" action="{{ url_for('delete_assignment', assignment_id=tarea.id) }}" onsubmit="return confirm('¿Eliminar esta tarea?');" style="margin:0;">
+                                    <input type="hidden" name="next_url" value="{{ url_for('upload_material') }}">
+                                    <button type="submit" class="btn btn-danger btn-sm">Eliminar</button>
+                                </form>
+                            </div>
+                            {% endfor %}
+                        </div>
+                    {% else %}
+                        <p class="empty-state">No hay tareas creadas aún.</p>
+                    {% endif %}
+                </div>
+
+                <div class="notion-calendar-card">
+                    <h3>Tus materiales subidos</h3>
+                    {% if teacher_materials %}
+                        <div class="calendar-events-list">
+                            {% for material in teacher_materials %}
+                            <div class="calendar-event-item">
+                                <div>
+                                    <strong>{{ material.titulo }}</strong>
+                                    <span>{{ material.fecha_creacion.strftime('%d/%m/%Y %H:%M') }} · {{ material.tipo|capitalize }}</span>
+                                </div>
+                                <form method="POST" action="{{ url_for('delete_material', material_id=material.id) }}" onsubmit="return confirm('¿Eliminar este material?');" style="margin:0;">
+                                    <input type="hidden" name="next_url" value="{{ url_for('upload_material') }}">
+                                    <button type="submit" class="btn btn-danger btn-sm">Eliminar</button>
+                                </form>
+                            </div>
+                            {% endfor %}
+                        </div>
+                    {% else %}
+                        <p class="empty-state">No hay materiales subidos aún.</p>
+                    {% endif %}
+                </div>
+
+                <div class="notion-calendar-card">
+                    <h3>Important dates / Meetings</h3>
+                    <form method="POST" action="{{ url_for('create_important_date') }}" class="form-group" style="margin-bottom:0;">
+                        <div class="form-group" style="margin-bottom: 10px;">
+                            <label for="important_title">Title</label>
+                            <input type="text" id="important_title" name="important_title" placeholder="Exam, speaking day, meeting" required>
+                        </div>
+                        <div class="form-group" style="margin-bottom: 10px;">
+                            <label for="important_description">Description</label>
+                            <textarea id="important_description" name="important_description" rows="3" placeholder="Optional details"></textarea>
+                        </div>
+                        <div class="form-group" style="margin-bottom: 10px;">
+                            <label for="important_event_date">Date and time</label>
+                            <input type="datetime-local" id="important_event_date" name="important_event_date" required>
+                        </div>
+                        <div class="form-group" style="margin-bottom: 10px;">
+                            <label for="important_meeting_link">Meeting link (optional)</label>
+                            <input type="url" id="important_meeting_link" name="important_meeting_link" placeholder="https://meet.google.com/... or Zoom link">
+                        </div>
+                        <div class="form-group" style="margin-bottom: 10px;">
+                            <label for="important_emoji">Emoji (optional)</label>
+                            <select id="important_emoji" name="important_emoji">
+                                <option value="">Sin emoji</option>
+                                <option value="📌">📌 Importante</option>
+                                <option value="✅">✅ Completado</option>
+                                <option value="📝">📝 Tarea</option>
+                                <option value="📚">📚 Clase</option>
+                                <option value="🎯">🎯 Objetivo</option>
+                                <option value="⏰">⏰ Recordatorio</option>
+                                <option value="💡">💡 Idea</option>
+                                <option value="🎥">🎥 Reunión/Video</option>
+                                <option value="🔥">🔥 Urgente</option>
+                            </select>
+                        </div>
+                        <div class="form-group" style="margin-bottom: 10px;">
+                            <label for="important_reminder_note">Reminder (optional)</label>
+                            <input type="text" id="important_reminder_note" name="important_reminder_note" placeholder="Bring worksheet / check attendance">
+                        </div>
+                        <div class="form-group" style="margin-bottom: 12px;">
+                            <label for="important_target_student_id">Who can see it</label>
+                            <select id="important_target_student_id" name="important_target_student_id">
+                                <option value="">All students</option>
+                                {% for student in students %}
+                                    <option value="{{ student.id }}">{{ student.nombre }} (@{{ student.username }})</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <button type="submit" class="btn btn-secondary" style="width:100%;">Schedule event / meeting</button>
+                    </form>
+                </div>
+            </aside>
+        </div>
+    </div>
+</div>
+
+<script>
+const scheduledEvents = {{ scheduled_materials|map(attribute='scheduled_for')|map('string')|list|tojson }};
+const importantDateEvents = {{ important_dates|map(attribute='event_date')|map('string')|list|tojson }};
+let teacherCalendarCursor = new Date();
+
+function chooseMaterialType(type) {
+    const tipoSelect = document.getElementById('tipo');
+    if (!tipoSelect) return;
+    tipoSelect.value = type;
+    updateMaterialType();
+}
+
+function updateMaterialType() {
+    const tipo = document.getElementById('tipo').value;
+    const fileSection = document.getElementById('file-section');
+    const videoSection = document.getElementById('video-section');
+    
+    fileSection.style.display = 'none';
+    videoSection.style.display = 'none';
+    
+    if (tipo === 'video') {
+        videoSection.style.display = 'block';
+    } else if (tipo) {
+        fileSection.style.display = 'block';
+    }
+}
+
+function syncFileName() {
+    const fileInput = document.getElementById('archivo');
+    const fileNameText = document.getElementById('file-name-text');
+    if (!fileInput || !fileNameText) return;
+    if (fileInput.files && fileInput.files.length > 0) {
+        fileNameText.textContent = `Selected: ${fileInput.files[0].name}`;
+    } else {
+        fileNameText.textContent = 'Choose a file or drag and drop here';
+    }
+}
+
+function parseEventDays() {
+    const keys = new Set();
+    [...scheduledEvents, ...importantDateEvents].forEach(item => {
+        if (!item || item === 'None') return;
+        const datePart = String(item).split(' ')[0];
+        if (datePart.includes('-')) {
+            keys.add(datePart);
+        }
+    });
+    return keys;
+}
+
+function renderCalendar() {
+    const grid = document.getElementById('calendar-grid');
+    const label = document.getElementById('calendar-month-label');
+    if (!grid || !label) return;
+
+    const today = new Date();
+    const year = teacherCalendarCursor.getFullYear();
+    const month = teacherCalendarCursor.getMonth();
+    label.textContent = teacherCalendarCursor.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+
+    const firstDay = new Date(year, month, 1).getDay();
+    const totalDays = new Date(year, month + 1, 0).getDate();
+    const eventDays = parseEventDays();
+
+    grid.innerHTML = '';
+
+    for (let i = 0; i < firstDay; i++) {
+        const blank = document.createElement('span');
+        blank.className = 'calendar-day empty';
+        grid.appendChild(blank);
+    }
+
+    for (let day = 1; day <= totalDays; day++) {
+        const cell = document.createElement('span');
+        const isoDate = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+        cell.className = 'calendar-day';
+        cell.textContent = day;
+        if (eventDays.has(isoDate)) {
+            cell.classList.add('has-event');
+        }
+        if (day === today.getDate()) {
+            cell.classList.add('today');
+        }
+        cell.style.cursor = 'pointer';
+        cell.title = 'Click to set event date';
+        cell.addEventListener('click', () => {
+            const importantInput = document.getElementById('important_event_date');
+            if (importantInput) {
+                const currentTime = importantInput.value && importantInput.value.includes('T')
+                    ? importantInput.value.split('T')[1]
+                    : '09:00';
+                importantInput.value = `${isoDate}T${currentTime}`;
+                importantInput.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            }
+        });
+        grid.appendChild(cell);
+    }
+}
+
+function changeTeacherMonth(direction) {
+    teacherCalendarCursor.setMonth(teacherCalendarCursor.getMonth() + direction);
+    renderCalendar();
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    renderCalendar();
+    updateMaterialType();
+});
+</script>
+{% endblock %}

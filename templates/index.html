@@ -1,0 +1,11 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card">
+  <h1>Plataforma de Inglés</h1>
+  <p class="muted">Cursos, clases tipo Notion, notas y preguntas al docente.</p>
+  <div class="row">
+    <a class="btn-primary" href="{{ url_for('login') }}">Iniciar sesión</a>
+    <a class="btn-ghost" href="{{ url_for('register') }}">Crear cuenta</a>
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+
+{% block title %}{{ t('nav_courses') }} - {{ t('app_name') }}{% endblock %}
+
+{% block content %}
+<div class="container course-space">
+    <div class="course-hero card">
+        <h1>{{ t('nav_courses') }}</h1>
+        {% if is_teacher %}
+            <p>Administra tus cursos y crea clases en un editor tipo Notion.</p>
+        {% else %}
+            <p>Explora las clases publicadas por tus docentes y participa con notas y preguntas.</p>
+        {% endif %}
+    </div>
+
+    <div class="course-grid">
+        {% if is_teacher %}
+        <div class="card">
+            <h2>Nueva hoja en blanco</h2>
+            <p class="empty-text">Ponle nombre y destinatario. Se crea como borrador para que la completes antes de publicarla.</p>
+            <form method="POST" class="form">
+                <div class="form-group">
+                    <label for="page_title">Nombre de la hoja</label>
+                    <input id="page_title" name="page_title" type="text" required placeholder="Ej: Clase 1 - Introducción">
+                </div>
+                <div class="form-group">
+                    <label for="target_student_id">Dirigido a</label>
+                    <select id="target_student_id" name="target_student_id">
+                        <option value="">Todos los estudiantes</option>
+                        {% for student in students %}
+                            <option value="{{ student.id }}">{{ student.nombre }} (@{{ student.username }})</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <button type="submit" class="btn btn-primary">Crear borrador</button>
+            </form>
+        </div>
+        {% endif %}
+
+        <div class="card {% if not is_teacher %}course-list-full{% endif %}">
+            <h2>{% if is_teacher %}Mis cursos{% else %}Cursos disponibles{% endif %}</h2>
+            {% if courses %}
+                <div class="course-list">
+                    {% for course in courses %}
+                    <a class="course-item" href="{{ url_for('course_detail', course_id=course.id) }}">
+                        <div>
+                            <h3>{{ course.title }}</h3>
+                            <p>{{ course.description or 'Sin descripción' }}</p>
+                            {% if teacher_map.get(course.teacher_id) %}
+                                <small>Docente: {{ teacher_map[course.teacher_id].nombre or teacher_map[course.teacher_id].username }}</small>
+                            {% endif %}
+                        </div>
+                        <span>→</span>
+                    </a>
+                    {% endfor %}
+                </div>
+            {% else %}
+                <p class="empty-text">Aún no hay cursos creados.</p>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}

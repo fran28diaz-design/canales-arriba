@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+
+{% block title %}{{ t('profile_title') }} - English Academy{% endblock %}
+
+{% block content %}
+<div class="container">
+    <div class="profile-container">
+        <div class="profile-header">
+            <h1>{{ t('profile_title') }}</h1>
+            <span class="role-badge">{{ t('teacher') if user.role == 'teacher' else t('student') }}</span>
+        </div>
+        
+        <div class="profile-content">
+            <div class="profile-info">
+                <div class="info-item">
+                    <strong>{{ t('username') }}</strong>
+                    <span>{{ user.username }}</span>
+                </div>
+                <div class="info-item">
+                    <strong>{{ t('email') }}</strong>
+                    <span>{{ user.email }}</span>
+                </div>
+                <div class="info-item">
+                    <strong>{{ t('member_since') }}</strong>
+                    <span>{{ user.fecha_creacion.strftime('%d/%m/%Y') }}</span>
+                </div>
+            </div>
+            
+            <form method="POST" class="profile-form">
+                <div class="form-group">
+                    <label for="nombre">{{ t('full_name') }}</label>
+                    <input type="text" id="nombre" name="nombre" value="{{ user.nombre or '' }}" placeholder="{{ t('your_name') }}">
+                </div>
+                
+                <div class="form-group">
+                    <label for="bio">{{ t('biography') }}</label>
+                    <textarea id="bio" name="bio" placeholder="{{ t('tell_us_about_you') }}" rows="4">{{ user.bio or '' }}</textarea>
+                </div>
+                
+                <div class="form-group">
+                    <label for="new_password">{{ t('new_password_optional') }}</label>
+                    <input type="password" id="new_password" name="new_password" placeholder="{{ t('leave_blank_keep_password') }}">
+                </div>
+
+                <div class="form-group">
+                    <label for="notification_sound_enabled">Sonido de notificaciones</label>
+                    <div style="display:flex; align-items:center; gap:10px;">
+                        <input type="checkbox" id="notification_sound_enabled" name="notification_sound_enabled" {% if user.notification_sound_enabled %}checked{% endif %}>
+                        <span>Activar sonido cuando lleguen mensajes nuevos</span>
+                    </div>
+                </div>
+                
+                <button type="submit" class="btn btn-primary">{{ t('save_changes') }}</button>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}{{ t('app_name') }}{% endblock %}</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body class="dark-theme" data-notification-sound-enabled="{{ '1' if notification_sound_enabled else '0' }}">
+    <nav class="navbar">
+        <div class="nav-container {% if session.user_id %}with-menu{% else %}center-only{% endif %}">
+            <div class="nav-brand">
+                <a href="/">{{ t('app_name') }}</a>
+            </div>
+            {% if session.user_id %}
+            <div class="nav-menu">
+                <a href="/" class="nav-link">{{ t('nav_home') }}</a>
+                <a href="{{ url_for('bible') }}" class="nav-link">{{ t('nav_bible') }}</a>
+                <a href="{{ url_for('courses') }}" class="nav-link">{{ t('nav_courses') }}</a>
+                <a href="{{ url_for('pagos') }}" class="nav-link">{{ t('nav_payments') }}</a>
+                <a href="{{ url_for('profile') }}" class="nav-link">{{ t('nav_profile') }}</a>
+                <a href="{{ url_for('messages') }}" class="nav-link">{{ t('nav_messages') }}</a>
+                {% if session.role == 'student' %}
+                    <a href="{{ url_for('classes') }}" class="nav-link">Clases</a>
+                {% endif %}
+                {% if session.role == 'teacher' %}
+                    <a href="{{ url_for('students_profiles') }}" class="nav-link">{{ t('nav_students_profiles') }}</a>
+                    <a href="{{ url_for('upload_material') }}" class="nav-link">{{ t('nav_upload_material') }}</a>
+                    <a href="{{ url_for('create_assignment') }}" class="nav-link">{{ t('nav_new_assignment') }}</a>
+                {% endif %}
+                <a href="{{ url_for('set_language', lang_code='en', next=request.path) }}" class="nav-link {% if current_lang == 'en' %}active{% endif %}">EN</a>
+                <a href="{{ url_for('set_language', lang_code='es', next=request.path) }}" class="nav-link {% if current_lang == 'es' %}active{% endif %}">ES</a>
+                <div class="nav-bell-wrap">
+                    <button type="button" class="nav-bell {% if nav_unread_total_count > 0 %}has-unread{% endif %}" id="navBellButton" aria-label="Notificaciones">
+                        🔔
+                        {% if nav_unread_total_count > 0 %}
+                            <span class="bell-badge">{{ nav_unread_total_count }}</span>
+                        {% endif %}
+                    </button>
+                    <div class="nav-bell-dropdown" id="navBellDropdown">
+                        <div class="bell-section">
+                            <h4>Mensajes recientes</h4>
+                            {% if nav_recent_messages %}
+                                {% for message in nav_recent_messages %}
+                                    <a href="{{ url_for('messages') }}" class="bell-item">
+                                        <strong>{{ message.content[:45] }}{% if message.content|length > 45 %}...{% endif %}</strong>
+                                        <span>{{ message.created_at.strftime('%d/%m %H:%M') }}</span>
+                                    </a>
+                                {% endfor %}
+                            {% else %}
+                                <p class="bell-empty">Sin mensajes recientes.</p>
+                            {% endif %}
+                        </div>
+                        <div class="bell-section">
+                            <h4>Notificaciones</h4>
+                            {% if nav_recent_notifications %}
+                                {% for note in nav_recent_notifications %}
+                                    <a href="{{ note.link or url_for('messages') }}" class="bell-item">
+                                        <strong>{{ note.title }}</strong>
+                                        <span>{{ note.body[:52] if note.body else 'Sin detalle' }}{% if note.body and note.body|length > 52 %}...{% endif %}</span>
+                                    </a>
+                                {% endfor %}
+                            {% else %}
+                                <p class="bell-empty">Sin notificaciones.</p>
+                            {% endif %}
+                        </div>
+                        <div class="bell-section bell-toggle-row">
+                            <label for="bellSoundToggle">🔊 Sonido notificaciones</label>
+                            <input type="checkbox" id="bellSoundToggle" {% if notification_sound_enabled %}checked{% endif %}>
+                        </div>
+                        <a href="{{ url_for('messages') }}" class="bell-open-all">Abrir mensajes</a>
+                    </div>
+                </div>
+                <a href="{{ url_for('logout') }}" class="nav-link logout-btn">{{ t('nav_logout') }}</a>
+            </div>
+            {% else %}
+            <div class="nav-menu">
+                <a href="{{ url_for('set_language', lang_code='en', next=request.path) }}" class="nav-link {% if current_lang == 'en' %}active{% endif %}">EN</a>
+                <a href="{{ url_for('set_language', lang_code='es', next=request.path) }}" class="nav-link {% if current_lang == 'es' %}active{% endif %}">ES</a>
+            </div>
+            {% endif %}
+        </div>
+    </nav>
+
+    <main class="main-content">
+        {% block content %}{% endblock %}
+    </main>
+
+    <footer class="footer">
+        <div class="footer-content">
+            <p>&copy; 2026 English Academy. Plataforma Educativa | Desarrollado con ❤️</p>
+        </div>
+    </footer>
+
+    <script src="{{ url_for('static', filename='js/script.js') }}"></script>
+</body>
+</html>

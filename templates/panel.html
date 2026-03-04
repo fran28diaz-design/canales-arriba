@@ -1,0 +1,125 @@
+{% extends "base.html" %}
+
+{% block title %}{{ t('panel_title') }} - English Academy{% endblock %}
+
+{% block content %}
+<div class="container">
+    <div class="dashboard">
+        <div class="welcome-section">
+            <h1>{{ 'Welcome' if current_lang == 'en' else 'Bienvenido/a' }} · {{ user.nombre or user.username }}</h1>
+            <p class="subtitle">{{ t('all_in_one_place') }}</p>
+        </div>
+
+        <div class="section daily-verse-block" style="margin-bottom: 20px;">
+            <h2>📖 {{ t('daily_verse') }}</h2>
+            <div class="verse-highlight">
+                <p class="verse-content" style="margin: 0;">
+                    <strong class="verse-reference">{{ daily_verse[0] }} {{ daily_verse[1] }}:{{ daily_verse[2] }}</strong>
+                    — <span class="verse-text" style="color:#000000 !important; font-weight:900 !important; opacity:1 !important;">{{ daily_verse[3] }}</span>
+                </p>
+            </div>
+        </div>
+
+        {% if is_teacher %}
+        <div class="stats-grid">
+            <div class="stat-card">
+                <div class="stat-number">{{ stats.tasks }}</div>
+                <div class="stat-label">{{ 'Assignments created' if current_lang == 'en' else 'Tareas creadas' }}</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-number">{{ stats.materials }}</div>
+                <div class="stat-label">{{ 'Materials uploaded' if current_lang == 'en' else 'Materiales subidos' }}</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-number">{{ stats.scheduled_pending }}</div>
+                <div class="stat-label">{{ 'Pending payments' if current_lang == 'en' else 'Pagos pendientes' }}</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-number">{{ stats.scheduled_paid }}</div>
+                <div class="stat-label">{{ 'Completed payments' if current_lang == 'en' else 'Pagos realizados' }}</div>
+            </div>
+        </div>
+
+        <div class="section" style="margin-top: 20px;">
+            <h2>{{ t('quick_access') }}</h2>
+            <div style="display:flex; gap:10px; flex-wrap:wrap; margin-top: 10px;">
+                <a href="{{ url_for('dashboard_teacher') }}" class="btn btn-secondary">{{ t('dashboard_teacher') }}</a>
+                <a href="{{ url_for('students_profiles') }}" class="btn btn-secondary">{{ t('nav_students_profiles') }}</a>
+                <a href="{{ url_for('create_assignment') }}" class="btn btn-secondary">{{ t('nav_new_assignment') }}</a>
+                <a href="{{ url_for('upload_material') }}" class="btn btn-secondary">{{ t('nav_upload_material') }}</a>
+                <a href="{{ url_for('pagos') }}" class="btn btn-primary">{{ t('payments_title') }}</a>
+                <a href="{{ url_for('bible') }}" class="btn btn-secondary">{{ t('nav_bible') }}</a>
+                <a href="{{ url_for('profile') }}" class="btn btn-secondary">{{ t('nav_profile') }}</a>
+            </div>
+        </div>
+
+        <div class="section" style="margin-top: 20px;">
+            <h2>{{ 'Latest scheduled charges' if current_lang == 'en' else 'Últimos cobros programados' }}</h2>
+            {% if recent_scheduled %}
+                <div class="tasks-list">
+                    {% for payment in recent_scheduled %}
+                    {% set student = student_map.get(payment.student_id) %}
+                    <div class="task-card">
+                        <div class="task-header">
+                            <h3>{{ payment.concept }}</h3>
+                            <span class="task-status status-{{ payment.status }}">{{ 'PAID' if current_lang == 'en' and payment.status == 'paid' else ('PENDING' if current_lang == 'en' and payment.status == 'pending' else payment.status|upper) }}</span>
+                        </div>
+                        <p class="task-desc">{{ '%.2f'|format(payment.amount) }} {{ payment.currency }} · {{ payment.due_date.strftime('%d/%m/%Y') }}</p>
+                        <div class="task-footer">
+                            <span class="task-date">👤 {{ (student.nombre if student else ('Student' if current_lang == 'en' else 'Estudiante')) or (student.username if student else '') }}</span>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+            {% else %}
+                <p class="empty-state">{{ 'No scheduled charges yet.' if current_lang == 'en' else 'Aún no hay cobros programados.' }}</p>
+            {% endif %}
+        </div>
+
+        {% else %}
+        <div class="stats-grid">
+            <div class="stat-card">
+                <div class="stat-number">{{ stats.pending_tasks }}</div>
+                <div class="stat-label">{{ 'Pending assignments' if current_lang == 'en' else 'Tareas pendientes' }}</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-number">{{ stats.upcoming_payments }}</div>
+                <div class="stat-label">{{ 'Upcoming payments' if current_lang == 'en' else 'Pagos por realizar' }}</div>
+            </div>
+        </div>
+
+        <div class="section" style="margin-top: 20px;">
+            <h2>{{ t('quick_access') }}</h2>
+            <div style="display:flex; gap:10px; flex-wrap:wrap; margin-top: 10px;">
+                <a href="{{ url_for('classes') }}" class="btn btn-secondary">Clases</a>
+                <a href="{{ url_for('pagos') }}" class="btn btn-primary">{{ t('payments_title') }}</a>
+                <a href="{{ url_for('bible') }}" class="btn btn-secondary">{{ t('nav_bible') }}</a>
+                <a href="{{ url_for('profile') }}" class="btn btn-secondary">{{ t('nav_profile') }}</a>
+            </div>
+        </div>
+
+        <div class="section" style="margin-top: 20px;">
+            <h2>{{ 'Upcoming payments scheduled by admin' if current_lang == 'en' else 'Próximos pagos programados por administrador' }}</h2>
+            {% if upcoming_payments %}
+                <div class="tasks-list">
+                    {% for payment in upcoming_payments %}
+                    <div class="task-card">
+                        <div class="task-header">
+                            <h3>{{ payment.concept }}</h3>
+                            <span class="task-status status-pendiente">{{ 'PENDING' if current_lang == 'en' else 'PENDIENTE' }}</span>
+                        </div>
+                        <p class="task-desc">{{ '%.2f'|format(payment.amount) }} {{ payment.currency }}</p>
+                        <div class="task-footer">
+                            <span class="task-date">📅 {{ payment.due_date.strftime('%d/%m/%Y') }}</span>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+            {% else %}
+                <p class="empty-state">{{ 'You have no scheduled pending payments.' if current_lang == 'en' else 'No tienes pagos programados pendientes.' }}</p>
+            {% endif %}
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}
