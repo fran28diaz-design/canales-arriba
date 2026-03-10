@@ -138,6 +138,12 @@
         </div>
         {% endif %}
 
+        {% if paypal_enabled %}
+        <div style="margin-top: 14px; padding: 12px 14px; border: 1px solid rgba(34,197,94,0.5); border-radius: 10px; display:grid; gap:6px;">
+            <p style="margin:0;"><strong>{{ 'PayPal active' if current_lang == 'en' else 'PayPal activo' }}</strong> · {{ 'You can also pay with PayPal in each scheduled charge.' if current_lang == 'en' else 'También puedes pagar con PayPal en cada cobro programado.' }}</p>
+        </div>
+        {% endif %}
+
         <div style="margin-top: 14px; padding: 12px 14px; border: 1px solid rgba(255,255,255,0.12); border-radius: 10px; display:grid; gap:6px;">
             <p style="margin:0;"><strong>✅ {{ 'Immediate payment' if current_lang == 'en' else 'Pago inmediato' }}</strong> · {{ 'The payment is processed on confirmation.' if current_lang == 'en' else 'El pago se procesa al confirmar.' }}</p>
             <p style="margin:0;"><strong>🔒 {{ 'Protection' if current_lang == 'en' else 'Protección' }}</strong> · {{ 'Sensitive data is masked and securely hashed.' if current_lang == 'en' else 'Datos sensibles enmascarados y hash seguro.' }}</p>
@@ -156,6 +162,11 @@
                     <form method="POST" action="{{ url_for('stripe_checkout_create', schedule_id=payment.id) }}" style="margin-top:10px;">
                         <button type="submit" class="btn btn-primary">{{ 'Pay now' if current_lang == 'en' else 'Pagar ahora' }}</button>
                     </form>
+                    {% endif %}
+                    {% if paypal_enabled %}
+                    <div style="margin-top: 10px;">
+                        <div id="paypal-button-container-{{ payment.id }}" class="paypal-button-container" data-schedule-id="{{ payment.id }}"></div>
+                    </div>
                     {% endif %}
                 </div>
                 {% endfor %}
@@ -413,6 +424,54 @@
 </div>
 
 {% if not is_teacher %}
+{% if paypal_enabled and paypal_client_id %}
+<script src="https://www.paypal.com/sdk/js?client-id={{ paypal_client_id }}&currency=USD&intent=capture"></script>
+<script>
+function initPaypalButtons() {
+    if (!window.paypal) {
+        return;
+    }
+
+    const containers = document.querySelectorAll('.paypal-button-container');
+    containers.forEach(container => {
+        const scheduleId = container.dataset.scheduleId;
+        if (!scheduleId) {
+            return;
+        }
+
+        paypal.Buttons({
+            createOrder: async function() {
+                const response = await fetch(`/pagos/paypal/order/${scheduleId}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+                const data = await response.json();
+                if (!response.ok || !data.ok || !data.order_id) {
+                    throw new Error(data.error || 'No se pudo iniciar PayPal');
+                }
+                return data.order_id;
+            },
+            onApprove: async function(data) {
+                const response = await fetch(`/pagos/paypal/capture/${data.orderID}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ schedule_id: scheduleId })
+                });
+                const result = await response.json();
+                if (!response.ok || !result.ok) {
+                    alert(result.error || 'No se pudo confirmar el pago PayPal.');
+                    return;
+                }
+                window.location.reload();
+            },
+            onError: function() {
+                alert('Hubo un error al procesar PayPal. Intenta nuevamente.');
+            }
+        }).render(container);
+    });
+}
+</script>
+{% endif %}
 <script>
 const COUNTRY_PHONE_OPTIONS = [
     // América
@@ -561,6 +620,9 @@ function togglePaymentFields() {
 }
 
 document.addEventListener('DOMContentLoaded', () => {
+    if (typeof initPaypalButtons === 'function') {
+        initPaypalButtons();
+    }
     fillCountryCodeSelects();
     togglePaymentFields();
 });

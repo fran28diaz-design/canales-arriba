@@ -9,6 +9,7 @@ import secrets
 import hashlib
 import json
 import smtplib
+import requests
 from email.mime.text import MIMEText
 from sqlalchemy import text
 from dotenv import load_dotenv
@@ -26,6 +27,9 @@ app.config['UPLOAD_FOLDER'] = 'uploads'
 app.config['STRIPE_SECRET_KEY'] = os.getenv('STRIPE_SECRET_KEY', '').strip()
 app.config['STRIPE_PUBLISHABLE_KEY'] = os.getenv('STRIPE_PUBLISHABLE_KEY', '').strip()
 app.config['STRIPE_WEBHOOK_SECRET'] = os.getenv('STRIPE_WEBHOOK_SECRET', '').strip()
+app.config['PAYPAL_CLIENT_ID'] = os.getenv('PAYPAL_CLIENT_ID', '').strip()
+app.config['PAYPAL_CLIENT_SECRET'] = os.getenv('PAYPAL_CLIENT_SECRET', '').strip()
+app.config['PAYPAL_MODE'] = os.getenv('PAYPAL_MODE', 'sandbox').strip().lower()
 
 if app.config['STRIPE_SECRET_KEY']:
     stripe.api_key = app.config['STRIPE_SECRET_KEY']
@@ -182,6 +186,93 @@ def stripe_is_enabled():
 
 def stripe_webhook_is_enabled():
     return bool(app.config.get('STRIPE_SECRET_KEY')) and bool(app.config.get('STRIPE_WEBHOOK_SECRET'))
+
+
+def paypal_is_enabled():
+    return bool(app.config.get('PAYPAL_CLIENT_ID')) and bool(app.config.get('PAYPAL_CLIENT_SECRET'))
+
+
+def get_paypal_api_base_url():
+    if app.config.get('PAYPAL_MODE') == 'live':
+        return 'https://api-m.paypal.com'
+    return 'https://api-m.sandbox.paypal.com'
+
+
+def get_paypal_access_token():
+    if not paypal_is_enabled():
+        return None
+
+    response = requests.post(
+        f"{get_paypal_api_base_url()}/v1/oauth2/token",
+        auth=(app.config.get('PAYPAL_CLIENT_ID'), app.config.get('PAYPAL_CLIENT_SECRET')),
+        headers={'Accept': 'application/json'},
+        data={'grant_type': 'client_credentials'},
+        timeout=20
+    )
+
+    if response.status_code != 200:
+        return None
+
+    return (response.json() or {}).get('access_token')
+
+
+def reconcile_paypal_capture(order_id, capture_id, student_id, schedule_id):
+    existing_tx = PaymentTransaction.query.filter(
+        PaymentTransaction.user_id == int(student_id),
+        PaymentTransaction.method_type == 'paypal_checkout',
+        PaymentTransaction.payment_note.like(f"%paypal_order:{order_id}%")
+    ).first()
+    if existing_tx:
+        return {
+            'ok': True,
+            'already_processed': True,
+            'reference': existing_tx.reference,
+            'email_sent': False
+        }
+
+    scheduled_payment = StudentPayment.query.filter_by(
+        id=int(schedule_id),
+        student_id=int(student_id)
+    ).first()
+
+    if not scheduled_payment:
+        return {
+            'ok': False,
+            'error': 'No se encontró el cobro asociado.'
+        }
+
+    if scheduled_payment.status != 'paid':
+        scheduled_payment.status = 'paid'
+        scheduled_payment.paid_date = datetime.utcnow()
+
+    payment_reference = f"PAY-{secrets.token_hex(4).upper()}"
+    transaction = PaymentTransaction(
+        user_id=int(student_id),
+        reference=payment_reference,
+        method_type='paypal_checkout',
+        method_display='PayPal Checkout',
+        amount=scheduled_payment.amount,
+        currency=scheduled_payment.currency,
+        payment_note=f"{scheduled_payment.concept} | paypal_order:{order_id} | paypal_capture:{capture_id}",
+        status='approved'
+    )
+    db.session.add(transaction)
+    db.session.commit()
+
+    user = User.query.get(int(student_id))
+    email_sent = False
+    if user:
+        try:
+            email_sent = send_payment_confirmation_email(user, transaction)
+        except Exception as e:
+            print(f"[DEBUG] Error enviando correo de pago PayPal: {e}")
+
+    return {
+        'ok': True,
+        'already_processed': False,
+        'reference': payment_reference,
+        'email_sent': email_sent
+    }
 
 # ============== MODELS ==============
 
@@ -1089,7 +1180,9 @@ def pagos():
         upcoming_payments=upcoming_payments,
         paid_records=paid_records,
         stripe_enabled=stripe_is_enabled(),
-        stripe_public_key=app.config.get('STRIPE_PUBLISHABLE_KEY', '')
+        stripe_public_key=app.config.get('STRIPE_PUBLISHABLE_KEY', ''),
+        paypal_enabled=paypal_is_enabled(),
+        paypal_client_id=app.config.get('PAYPAL_CLIENT_ID', '')
     )
 
 
@@ -1225,6 +1318,129 @@ def stripe_webhook():
         'already_processed': result.get('already_processed', False),
         'reference': result.get('reference')
     }), 200
+
+
+@app.route('/pagos/paypal/order/<int:schedule_id>', methods=['POST'])
+@login_required
+def paypal_create_order(schedule_id):
+    if session.get('role') != 'student':
+        return jsonify({'ok': False, 'error': 'Solo estudiantes pueden iniciar pagos.'}), 403
+
+    if not paypal_is_enabled():
+        return jsonify({'ok': False, 'error': 'PayPal no está configurado.'}), 503
+
+    current_user = User.query.get(session['user_id'])
+    scheduled_payment = StudentPayment.query.filter_by(
+        id=schedule_id,
+        student_id=current_user.id,
+        status='pending'
+    ).first()
+
+    if not scheduled_payment:
+        return jsonify({'ok': False, 'error': 'El pago programado no está disponible.'}), 404
+
+    access_token = get_paypal_access_token()
+    if not access_token:
+        return jsonify({'ok': False, 'error': 'No se pudo autenticar PayPal.'}), 502
+
+    payload = {
+        'intent': 'CAPTURE',
+        'purchase_units': [{
+            'reference_id': f'schedule_{scheduled_payment.id}',
+            'custom_id': f'{current_user.id}:{scheduled_payment.id}',
+            'description': scheduled_payment.concept,
+            'amount': {
+                'currency_code': scheduled_payment.currency.upper(),
+                'value': f"{scheduled_payment.amount:.2f}"
+            }
+        }],
+        'application_context': {
+            'user_action': 'PAY_NOW',
+            'return_url': url_for('pagos', _external=True),
+            'cancel_url': url_for('pagos', _external=True)
+        }
+    }
+
+    response = requests.post(
+        f"{get_paypal_api_base_url()}/v2/checkout/orders",
+        headers={
+            'Content-Type': 'application/json',
+            'Authorization': f'Bearer {access_token}'
+        },
+        json=payload,
+        timeout=20
+    )
+
+    if response.status_code not in [200, 201]:
+        return jsonify({'ok': False, 'error': 'No se pudo crear la orden de PayPal.'}), 400
+
+    order_data = response.json() or {}
+    return jsonify({'ok': True, 'order_id': order_data.get('id')})
+
+
+@app.route('/pagos/paypal/capture/<order_id>', methods=['POST'])
+@login_required
+def paypal_capture_order(order_id):
+    if session.get('role') != 'student':
+        return jsonify({'ok': False, 'error': 'Solo estudiantes pueden confirmar pagos.'}), 403
+
+    if not paypal_is_enabled():
+        return jsonify({'ok': False, 'error': 'PayPal no está configurado.'}), 503
+
+    payload = request.get_json(silent=True) or {}
+    schedule_id = payload.get('schedule_id')
+    if not str(schedule_id).isdigit():
+        return jsonify({'ok': False, 'error': 'Pago programado inválido.'}), 400
+
+    current_user = User.query.get(session['user_id'])
+    scheduled_payment = StudentPayment.query.filter_by(
+        id=int(schedule_id),
+        student_id=current_user.id,
+        status='pending'
+    ).first()
+    if not scheduled_payment:
+        return jsonify({'ok': False, 'error': 'El pago programado no está disponible.'}), 404
+
+    access_token = get_paypal_access_token()
+    if not access_token:
+        return jsonify({'ok': False, 'error': 'No se pudo autenticar PayPal.'}), 502
+
+    response = requests.post(
+        f"{get_paypal_api_base_url()}/v2/checkout/orders/{order_id}/capture",
+        headers={
+            'Content-Type': 'application/json',
+            'Authorization': f'Bearer {access_token}'
+        },
+        timeout=20
+    )
+
+    if response.status_code not in [200, 201]:
+        return jsonify({'ok': False, 'error': 'No se pudo capturar el pago en PayPal.'}), 400
+
+    capture_data = response.json() or {}
+    status = (capture_data.get('status') or '').upper()
+    if status != 'COMPLETED':
+        return jsonify({'ok': False, 'error': 'El pago no fue completado en PayPal.'}), 400
+
+    purchase_units = capture_data.get('purchase_units') or []
+    captures = (((purchase_units[0] if purchase_units else {}).get('payments') or {}).get('captures') or [])
+    capture_id = captures[0].get('id') if captures else ''
+
+    result = reconcile_paypal_capture(
+        order_id=order_id,
+        capture_id=capture_id,
+        student_id=current_user.id,
+        schedule_id=int(schedule_id)
+    )
+
+    if not result.get('ok'):
+        return jsonify({'ok': False, 'error': result.get('error', 'No se pudo registrar el pago.')}), 400
+
+    return jsonify({
+        'ok': True,
+        'already_processed': result.get('already_processed', False),
+        'reference': result.get('reference')
+    })
 
 @app.route('/pagos/method/<int:method_id>/delete', methods=['POST'])
 @login_required
