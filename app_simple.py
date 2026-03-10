@@ -7,6 +7,7 @@ from flask import Flask, render_template_string, request, redirect, url_for, ses
 import os
 import json
 from datetime import datetime
+from html import escape
 from werkzeug.utils import secure_filename
 
 
@@ -17,6 +18,7 @@ DATA_FILE = "data.json"
 UPLOAD_FOLDER = "uploads"
 ALLOWED_REPORT_EXTENSIONS = {"pdf", "doc", "docx"}
 ALLOWED_VIDEO_EXTENSIONS = {"mp4", "mov", "webm", "m4v"}
+ALLOWED_PROFILE_IMAGE_EXTENSIONS = {"png", "jpg", "jpeg", "webp", "gif"}
 PREDEFINED_GRADES = [
     "Materno",
     "Prescolar",
@@ -103,6 +105,13 @@ def allowed_video_file(filename):
     return extension in ALLOWED_VIDEO_EXTENSIONS
 
 
+def allowed_profile_image(filename):
+    if not filename or '.' not in filename:
+        return False
+    extension = filename.rsplit('.', 1)[1].lower()
+    return extension in ALLOWED_PROFILE_IMAGE_EXTENSIONS
+
+
 def report_extension(filename):
     if not filename or '.' not in filename:
         return ""
@@ -139,6 +148,40 @@ def response_mode_label(mode):
     if normalized == 'video_only':
         return 'Solo video'
     return 'Escrita (texto/archivo)'
+
+
+def birthday_message_for_user(user):
+    if not isinstance(user, dict):
+        return ""
+
+    birth_date = str(user.get('birth_date', '')).strip()
+    if not birth_date:
+        return ""
+
+    try:
+        birthday = datetime.strptime(birth_date, '%Y-%m-%d').date()
+    except Exception:
+        return ""
+
+    today = datetime.now().date()
+    if birthday.month == today.month and birthday.day == today.day:
+        name = str(user.get('nombre', '')).strip() or ""
+        if name:
+            return f"🎉 ¡Feliz cumpleaños, {name}!"
+        return "🎉 ¡Feliz cumpleaños!"
+    return ""
+
+
+def birthday_banner_html(user):
+    message = birthday_message_for_user(user)
+    if not message:
+        return ""
+
+    return f"""
+    <div class=\"card\" style=\"border-left:6px solid #27ae60; background:#eafaf1;\">
+        <h2 style=\"margin:0;\">{escape(message)}</h2>
+    </div>
+    """
 
 
 def _default_data():
@@ -260,6 +303,9 @@ BASE_HTML = """
                     <a href="/student/tasks" class="btn btn-secondary">Tareas</a>
                     <a href="/student/practices" class="btn btn-secondary">Prácticas</a>
                     <a href="/student/reports" class="btn btn-secondary">Informes</a>
+                {% endif %}
+                {% if session.get('role') in ['teacher', 'student'] %}
+                    <a href="/profile" class="btn btn-secondary">Mi perfil</a>
                 {% endif %}
                 <a href="/logout" class="btn btn-danger">Salir</a>
             {% else %}
@@ -432,11 +478,13 @@ def dashboard():
     if role == 'teacher':
         my_posts = [p for p in data.get('posts', {}).values() if p.get('teacher') == session.get('user_id')]
         teacher_user = users.get(session.get('user_id'), {})
+        birthday_banner = birthday_banner_html(teacher_user)
         materias = sanitize_subjects(teacher_user.get('materias', []))
         if not materias and teacher_user.get('materia') in PREDEFINED_SUBJECTS:
             materias = [teacher_user.get('materia')]
         materias_label = ", ".join(materias) if materias else "Sin materias asignadas"
         content = f"""
+        {birthday_banner}
         <div class="card">
             <h1>👩‍🏫 Dashboard Docente</h1>
             <p><strong>Materias asignadas:</strong> {materias_label}</p>
@@ -450,7 +498,10 @@ def dashboard():
         """
         return render_template_string(BASE_HTML, title="Dashboard Docente", content=content)
 
-    content = """
+    student_user = users.get(session.get('user_id'), {})
+    birthday_banner = birthday_banner_html(student_user)
+    content = f"""
+    {birthday_banner}
     <div class="card">
         <h1>🎒 Dashboard Estudiante</h1>
         <p>Consulta todo lo que publican tus profesores por materia.</p>
@@ -462,6 +513,141 @@ def dashboard():
     </div>
     """
     return render_template_string(BASE_HTML, title="Dashboard Estudiante", content=content)
+
+
+@app.route('/profile', methods=['GET', 'POST'])
+def profile():
+    if not require_login():
+        return redirect(url_for('login'))
+
+    if current_role() not in ['teacher', 'student']:
+        return redirect(url_for('dashboard'))
+
+    data = load_data()
+    users = data.get('users', {})
+    user_id = session.get('user_id')
+    user = users.get(user_id)
+
+    if not user:
+        session.clear()
+        return redirect(url_for('login'))
+
+    error_message = ""
+    success_message = ""
+
+    if request.method == 'POST':
+        new_name = request.form.get('nombre', '').strip()
+        new_bio = request.form.get('bio', '').strip()
+        new_birth_date = request.form.get('birth_date', '').strip()
+        profile_image = request.files.get('profile_image')
+
+        if not new_name:
+            error_message = "El nombre es obligatorio"
+        elif len(new_bio) > 500:
+            error_message = "La descripción breve debe tener máximo 500 caracteres"
+        elif new_birth_date:
+            try:
+                datetime.strptime(new_birth_date, '%Y-%m-%d')
+            except Exception:
+                error_message = "La fecha de cumpleaños debe tener formato válido"
+
+        if not error_message and profile_image and profile_image.filename:
+            if not allowed_profile_image(profile_image.filename):
+                error_message = "La imagen debe ser PNG, JPG, JPEG, WEBP o GIF"
+
+        if not error_message:
+            user['nombre'] = new_name
+            user['bio'] = new_bio
+            user['birth_date'] = new_birth_date
+
+            if profile_image and profile_image.filename:
+                extension = profile_image.filename.rsplit('.', 1)[1].lower()
+                safe_user_id = secure_filename(str(user_id))
+                filename = secure_filename(
+                    f"profile_{safe_user_id}_{int(datetime.now().timestamp())}.{extension}"
+                )
+                file_path = os.path.join(UPLOAD_FOLDER, filename)
+                profile_image.save(file_path)
+                user['profile_image'] = filename
+
+            users[user_id] = user
+            data['users'] = users
+            save_data(data)
+            session['username'] = user.get('nombre', user_id)
+            success_message = "Perfil actualizado correctamente"
+
+    profile_image_html = ""
+    image_filename = str(user.get('profile_image', '')).strip()
+    if image_filename:
+        profile_image_html = f"""
+        <div style=\"margin-bottom:12px;\">
+            <img src=\"/uploads/{escape(image_filename)}\" alt=\"Imagen de perfil\" style=\"width:120px; height:120px; object-fit:cover; border-radius:50%; border:2px solid #ddd;\">
+        </div>
+        """
+
+    birthday_message = birthday_message_for_user(user)
+    birthday_message_html = ""
+    if birthday_message:
+        birthday_message_html = f"""
+        <div style=\"background:#eafaf1; border:1px solid #27ae60; color:#1e8449; padding:10px 12px; border-radius:8px; margin-bottom:12px;\">
+            {escape(birthday_message)}
+        </div>
+        """
+
+    success_html = ""
+    if success_message:
+        success_html = f"""
+        <div style=\"background:#eafaf1; border:1px solid #27ae60; color:#1e8449; padding:10px 12px; border-radius:8px; margin-bottom:12px;\">
+            {escape(success_message)}
+        </div>
+        """
+
+    error_html = ""
+    if error_message:
+        error_html = f"""
+        <div style=\"background:#fdecea; border:1px solid #c0392b; color:#922b21; padding:10px 12px; border-radius:8px; margin-bottom:12px;\">
+            {escape(error_message)}
+        </div>
+        """
+
+    content = f"""
+    <div class=\"card\" style=\"max-width:720px; margin:0 auto;\">
+        <h1>👤 Mi perfil</h1>
+        <p>Edita tu información personal, imagen, descripción y cumpleaños.</p>
+
+        {success_html}
+        {error_html}
+        {birthday_message_html}
+
+        {profile_image_html}
+
+        <form method=\"POST\" enctype=\"multipart/form-data\">
+            <div class=\"form-group\">
+                <label>Nombre completo:</label>
+                <input type=\"text\" name=\"nombre\" value=\"{escape(str(user.get('nombre', '')))}\" required>
+            </div>
+
+            <div class=\"form-group\">
+                <label>Descripción breve:</label>
+                <textarea name=\"bio\" rows=\"4\" maxlength=\"500\" placeholder=\"Cuéntanos algo breve sobre ti\">{escape(str(user.get('bio', '')))}</textarea>
+            </div>
+
+            <div class=\"form-group\">
+                <label>Fecha de cumpleaños:</label>
+                <input type=\"date\" name=\"birth_date\" value=\"{escape(str(user.get('birth_date', '')))}\">
+            </div>
+
+            <div class=\"form-group\">
+                <label>Imagen de perfil (PNG, JPG, JPEG, WEBP, GIF):</label>
+                <input type=\"file\" name=\"profile_image\" accept=\"image/png,image/jpeg,image/jpg,image/webp,image/gif\">
+            </div>
+
+            <button type=\"submit\" class=\"btn btn-primary\">Guardar cambios</button>
+        </form>
+    </div>
+    """
+
+    return render_template_string(BASE_HTML, title="Mi perfil", content=content)
 
 
 @app.route('/admin/users')
